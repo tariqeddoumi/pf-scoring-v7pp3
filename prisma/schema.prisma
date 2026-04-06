@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  ANALYST
+  REVIEWER
+  RISK
+  COMMITTEE
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ON_HOLD
+  CLOSED
+  REJECTED
+}
+
+enum EvaluationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  RISK_REVIEW
+  COMMITTEE_REVIEW
+  APPROVED
+  REJECTED
+  RETURNED
+}
+
+enum RuleSeverity {
+  INFO
+  WARNING
+  BLOCKING
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  fullName     String
+  passwordHash String
+  role         UserRole
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  projects     Project[]    @relation("ProjectOwner")
+  evaluations  Evaluation[] @relation("EvaluationAuthor")
+  decisions    Decision[]
+  audits       AuditLog[]
+}
+
+model Project {
+  id              String         @id @default(cuid())
+  projectCode     String         @unique
+  name            String
+  sponsor         String
+  country         String
+  sector          String
+  currency        String         @default("MAD")
+  totalCost       Decimal        @db.Decimal(18, 2)
+  requestedAmount Decimal        @db.Decimal(18, 2)
+  phase           String
+  offTaker        String?
+  epcContractor   String?
+  oAndMOperator   String?
+  status          ProjectStatus  @default(DRAFT)
+  ownerId         String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  owner           User           @relation("ProjectOwner", fields: [ownerId], references: [id])
+  evaluations     Evaluation[]
+  auditLogs       AuditLog[]
+}
+
+model Evaluation {
+  id                String           @id @default(cuid())
+  reference         String           @unique
+  projectId         String
+  authorId          String
+  version           Int              @default(1)
+  status            EvaluationStatus @default(DRAFT)
+  scoringDate       DateTime         @default(now())
+  score             Decimal          @default(0) @db.Decimal(8, 2)
+  grade             String?
+  probabilityDefault Decimal?        @db.Decimal(8, 4)
+  summary           String?
+  recommendation    String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  project           Project          @relation(fields: [projectId], references: [id])
+  author            User             @relation("EvaluationAuthor", fields: [authorId], references: [id])
+  domainScores      DomainScore[]
+  criteriaValues    CriterionValue[]
+  decisions         Decision[]
+  auditLogs         AuditLog[]
+}
+
+model ScoreDomain {
+  id          String          @id @default(cuid())
+  code        String          @unique
+  name        String
+  weight      Decimal         @db.Decimal(8, 2)
+  sortOrder   Int             @default(0)
+  isActive    Boolean         @default(true)
+  criteria    ScoreCriterion[]
+}
+
+model ScoreCriterion {
+  id          String            @id @default(cuid())
+  domainId    String
+  code        String            @unique
+  name        String
+  description String?
+  weight      Decimal           @db.Decimal(8, 2)
+  inputType   String            @default("select")
+  sortOrder   Int               @default(0)
+  isActive    Boolean           @default(true)
+  domain      ScoreDomain       @relation(fields: [domainId], references: [id])
+  options     ScoreOption[]
+  values      CriterionValue[]
+}
+
+model ScoreOption {
+  id           String         @id @default(cuid())
+  criterionId  String
+  label        String
+  value        String
+  numericScore Decimal        @db.Decimal(8, 2)
+  sortOrder    Int            @default(0)
+  isRedFlag    Boolean        @default(false)
+  criterion    ScoreCriterion @relation(fields: [criterionId], references: [id])
+}
+
+model CriterionValue {
+  id            String         @id @default(cuid())
+  evaluationId  String
+  criterionId   String
+  selectedValue String
+  selectedLabel String
+  numericScore  Decimal        @db.Decimal(8, 2)
+  comment       String?
+  evaluation    Evaluation     @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  criterion     ScoreCriterion @relation(fields: [criterionId], references: [id])
+
+  @@unique([evaluationId, criterionId])
+}
+
+model DomainScore {
+  id           String      @id @default(cuid())
+  evaluationId String
+  domainCode   String
+  domainName   String
+  rawScore     Decimal     @db.Decimal(8, 2)
+  weightedScore Decimal    @db.Decimal(8, 2)
+  evaluation   Evaluation  @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+}
+
+model Decision {
+  id            String           @id @default(cuid())
+  evaluationId  String
+  decidedById   String
+  stepCode      String
+  action        String
+  comment       String?
+  decidedAt     DateTime         @default(now())
+  evaluation    Evaluation       @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  decidedBy     User             @relation(fields: [decidedById], references: [id])
+}
+
+model WorkflowStep {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  requiredRole  UserRole
+  sortOrder     Int      @default(0)
+  nextOnApprove String?
+  nextOnReject  String?
+  isFinal       Boolean  @default(false)
+}
+
+model RuleDefinition {
+  id              String       @id @default(cuid())
+  code            String       @unique
+  name            String
+  description     String?
+  criterionCode   String?
+  operator        String
+  expectedValue   String
+  severity        RuleSeverity
+  message         String
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+}
+
+model DelegationRule {
+  id                 String   @id @default(cuid())
+  code               String   @unique
+  name               String
+  minAmount          Decimal  @db.Decimal(18, 2)
+  maxAmount          Decimal  @db.Decimal(18, 2)
+  requiredFinalRole  UserRole
+  sector             String?
+  country            String?
+  isActive           Boolean  @default(true)
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  action        String
+  fieldName     String?
+  oldValue      String?
+  newValue      String?
+  performedById String?
+  performedAt   DateTime @default(now())
+  projectId     String?
+  evaluationId  String?
+  performedBy   User?    @relation(fields: [performedById], references: [id])
+  project       Project? @relation(fields: [projectId], references: [id])
+  evaluation    Evaluation? @relation(fields: [evaluationId], references: [id])
+}
