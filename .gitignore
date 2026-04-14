@@ -1,7 +1,0 @@
-node_modules
-.next
-.env
-coverage
-*.log
-prisma/dev.db
-*.tsbuildinfo
