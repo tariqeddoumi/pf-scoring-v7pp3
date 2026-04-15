@@ -90,9 +90,11 @@ async function handler(
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  const params = await resolveRouteParams(context as RouteContext<{ id: string; versionId: string }>);
   return withAuth(request, (req, user) => handler(req, user, { params }));
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  const params = await resolveRouteParams(context as RouteContext<{ id: string; versionId: string }>);
   return withAuth(request, (req, user) => handler(req, user, { params }));
 }
