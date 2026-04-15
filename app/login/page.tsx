@@ -3,6 +3,9 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+const TEST_ADMIN_EMAIL = "admin@pf-scoring.ma";
+const TEST_ADMIN_PASSWORD = "Admin123!";
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -25,12 +28,18 @@ function LoginPageContent() {
     setError("");
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedPassword = password.trim();
+
       // Attempt login directly without health check blocking it
       // The login endpoint will handle database errors properly
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: normalizedPassword,
+        }),
       });
 
       const data = await response.json();
@@ -47,7 +56,14 @@ function LoginPageContent() {
         if (response.status >= 500) {
           setError(`⚠️ ${errorMessage}`);
         } else {
-          setError(errorMessage);
+          const isAdminCredentialError =
+            data?.errorCode === "ERR_AUTH_001" &&
+            normalizedEmail === TEST_ADMIN_EMAIL;
+          setError(
+            isAdminCredentialError
+              ? `${errorMessage} — Astuce: compte admin de test ${TEST_ADMIN_EMAIL} / ${TEST_ADMIN_PASSWORD}`
+              : errorMessage
+          );
         }
       }
     } catch (error) {
@@ -224,10 +240,21 @@ function LoginPageContent() {
               <span className="font-medium">Compte de test :</span>
             </p>
             <p className="text-xs text-slate-400">
-              📧 admin@pf-scoring.ma
+              📧 {TEST_ADMIN_EMAIL}
               <br />
-              🔑 Admin123!
+              🔑 {TEST_ADMIN_PASSWORD}
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail(TEST_ADMIN_EMAIL);
+                setPassword(TEST_ADMIN_PASSWORD);
+                setError("");
+              }}
+              className="mt-3 text-xs text-blue-300 hover:text-blue-200 underline underline-offset-2"
+            >
+              Remplir automatiquement ces identifiants
+            </button>
           </div>
 
           {/* Bypass Mode */}
