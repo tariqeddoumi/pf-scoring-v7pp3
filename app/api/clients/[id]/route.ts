@@ -185,13 +185,16 @@ async function handleDELETE(
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  const params = await resolveRouteParams(context as RouteContext<{ id: string }>);
   return withAuth(request, (req, user) => handleGET(req, user, { params }));
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
+  const params = await resolveRouteParams(context as RouteContext<{ id: string }>);
   return withAuth(request, (req, user) => handlePUT(req, user, { params }));
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
+  const params = await resolveRouteParams(context as RouteContext<{ id: string }>);
   return withAuth(request, (req, user) => handleDELETE(req, user, { params }));
 }
