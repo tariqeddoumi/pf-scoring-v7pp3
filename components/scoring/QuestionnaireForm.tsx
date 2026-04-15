@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactElement } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { QuestionnaireNode } from "@/lib/services/scoring-questionnaire-service";
 
@@ -79,7 +79,7 @@ export function QuestionnaireForm({
     return "bg-slate-800/30";
   };
 
-  const renderNode = (node: QuestionnaireNode, depth: number = 0): JSX.Element => {
+  const renderNode = (node: QuestionnaireNode, depth: number = 0): ReactElement => {
     const isParent = node.children && node.children.length > 0;
     const isExpanded = expandedNodes.has(node.id);
     const nodeAnswer = answers[node.id];

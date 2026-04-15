@@ -1,27 +1,18 @@
 /**
  * Utilities for dynamic Next.js App Router route handlers.
  *
- * Next.js has changed the typing of route params across versions.
- * In some environments the route context exposes `params` directly,
- * while in newer builds it may expose `params` as a Promise.
- *
- * This helper normalizes both cases so route handlers remain compatible
- * and easier to maintain.
+ * Next.js 15 route handler context expects `params` to be provided
+ * asynchronously as a Promise.
  */
 export type RouteContext<TParams extends Record<string, string> = Record<string, string>> = {
-  params?: TParams | Promise<TParams>;
+  params: Promise<TParams>;
 };
 
 /**
- * Resolve dynamic route params regardless of whether Next.js provides
- * them synchronously or asynchronously.
+ * Resolve dynamic route params from Next.js route context.
  */
 export async function resolveRouteParams<TParams extends Record<string, string>>(
-  context: RouteContext<TParams> | undefined
+  context: RouteContext<TParams>
 ): Promise<TParams> {
-  if (!context || !context.params) {
-    return {} as TParams;
-  }
-
-  return await Promise.resolve(context.params);
+  return await context.params;
 }
