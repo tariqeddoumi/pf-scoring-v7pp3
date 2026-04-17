@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -12,77 +12,223 @@ interface Project {
   nom: string;
 }
 
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
+interface ScoringModel {
+  id: string;
+  label: string;
+  code: string;
+}
+
+interface ScoringVersion {
+  id: string;
+  versionNumber: number;
+  label: string;
+  status: string;
+  isPublished: boolean;
+  modelId: string;
+}
+
+interface EvaluationCreateResponse {
+  data?: { id?: string };
+  error?: string;
+}
+
+interface QuestionnaireResponse {
+  data?: QuestionnaireNode[];
+  modelVersionId?: string;
+  error?: string;
+}
+=======
 type EvaluationCreateResponse =
   | { id: string }
   | { data?: { id?: string } }
   | { error?: string };
+>>>>>>> main
 
 export default function NewEvaluationPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [models, setModels] = useState<ScoringModel[]>([]);
+  const [versions, setVersions] = useState<ScoringVersion[]>([]);
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireNode[]>([]);
-  const [modelVersionId, setModelVersionId] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [selectedVersionId, setSelectedVersionId] = useState("");
+
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
 
-  const [formData, setFormData] = useState({
-    projectId: "",
-    recommendation: "APPROVE",
-    notes: "",
-    status: "brouillon",
-  });
+  const [loadingInitialData, setLoadingInitialData] = useState(false);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [loadingQuestionnaire, setLoadingQuestionnaire] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  // Fetch projects and questionnaire on mount
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInitialData = async () => {
       try {
-        setLoading(true);
-        const [projectsRes, questionnaireRes] = await Promise.all([
+        setLoadingInitialData(true);
+        setError("");
+
+        const [projectsRes, modelsRes] = await Promise.all([
           fetch("/api/projects"),
-          fetch("/api/scoring/questionnaire"),
+          fetch("/api/admin/scoring/models"),
         ]);
 
-        if (!projectsRes.ok) throw new Error("Erreur lors du chargement des projets");
-        const projectsData = await projectsRes.json();
-        setProjects(projectsData.data || []);
-
-        if (questionnaireRes.ok) {
-          const qData = await questionnaireRes.json();
-          setQuestionnaire(qData.data || []);
-          setModelVersionId(qData.modelVersionId);
+        if (!projectsRes.ok) {
+          throw new Error("Erreur lors du chargement des projets");
         }
+
+        if (!modelsRes.ok) {
+          throw new Error("Erreur lors du chargement des modèles de scoring");
+        }
+
+        const projectsData = await projectsRes.json();
+        const modelsData = await modelsRes.json();
+
+        setProjects(projectsData.data || []);
+        setModels(modelsData.data || []);
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des données";
         setError(message);
       } finally {
-        setLoading(false);
+        setLoadingInitialData(false);
       }
     };
-    fetchData();
+
+    fetchInitialData();
   }, []);
 
-  // Step 1: Create evaluation (without answers)
-  const handleCreateEvaluation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/evaluations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Erreur lors de la création");
+  useEffect(() => {
+    const fetchVersions = async () => {
+      if (!selectedModelId) {
+        setVersions([]);
+        setSelectedVersionId("");
+        setQuestionnaire([]);
+        return;
       }
 
+      try {
+        setLoadingVersions(true);
+        setError("");
+        setSelectedVersionId("");
+        setQuestionnaire([]);
+
+        const res = await fetch(`/api/admin/scoring/models/${selectedModelId}/versions`);
+
+        if (!res.ok) {
+          throw new Error("Erreur lors du chargement des versions");
+        }
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
+
+        const payload = await res.json();
+        const allVersions: ScoringVersion[] = payload.data || [];
+
+        const publishedVersions = allVersions.filter(
+          (version) => version.isPublished || version.status === "PUBLISHED"
+        );
+
+        setVersions(publishedVersions);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Erreur lors du chargement des versions";
+=======
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Erreur lors du chargement des données";
+>>>>>>> main
+        setError(message);
+      } finally {
+        setLoadingVersions(false);
+      }
+    };
+
+    fetchVersions();
+  }, [selectedModelId]);
+
+  useEffect(() => {
+    const fetchQuestionnaire = async () => {
+      if (!selectedVersionId) {
+        setQuestionnaire([]);
+        return;
+      }
+
+      try {
+        setLoadingQuestionnaire(true);
+        setError("");
+
+        const res = await fetch(
+          `/api/scoring/questionnaire?modelVersionId=${encodeURIComponent(selectedVersionId)}`
+        );
+
+        if (!res.ok) {
+          const payload = (await res.json()) as QuestionnaireResponse;
+          throw new Error(payload.error || "Erreur lors du chargement du questionnaire");
+        }
+
+        const payload = (await res.json()) as QuestionnaireResponse;
+        setQuestionnaire(payload.data || []);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Erreur lors du chargement du questionnaire";
+        setError(message);
+      } finally {
+        setLoadingQuestionnaire(false);
+      }
+    };
+
+    fetchQuestionnaire();
+  }, [selectedVersionId]);
+
+  const selectedVersion = useMemo(
+    () => versions.find((version) => version.id === selectedVersionId),
+    [versions, selectedVersionId]
+  );
+
+  const canCreateEvaluation =
+    selectedProjectId.length > 0 && selectedModelId.length > 0 && selectedVersionId.length > 0;
+
+  const handleCreateEvaluation = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!canCreateEvaluation) return;
+
+    try {
+      setSubmitting(true);
+      setError("");
+
+      const res = await fetch("/api/admin/scoring/evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          modelId: selectedModelId,
+          modelVersionId: selectedVersionId,
+        }),
+      });
+
+      const payload = (await res.json()) as EvaluationCreateResponse;
+
+      if (!res.ok) {
+        throw new Error(payload.error || "Erreur lors de la création de l'évaluation");
+      }
+
+      const createdId = payload.data?.id;
+
+      if (!createdId) {
+        throw new Error("Évaluation créée mais identifiant introuvable dans la réponse API.");
+      }
+
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
+      setEvaluationId(createdId);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Erreur lors de la création de l'évaluation";
+=======
       const payload = (await res.json()) as EvaluationCreateResponse;
       const createdId =
         "id" in payload
@@ -101,24 +247,39 @@ export default function NewEvaluationPage() {
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la création";
+>>>>>>> main
       setError(message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Step 2: Save answers and calculate score
   const handleSubmitAnswers = async () => {
-    if (!evaluationId || !modelVersionId) return;
-
-    setSubmitting(true);
-    setError("");
+    if (!evaluationId || !selectedVersionId) return;
 
     try {
-      // Convert answers to API format
+      setSubmitting(true);
+      setError("");
+
       const answersArray = Object.entries(answers).map(([nodeId, value]) => ({
         nodeId,
         answerType: "VALUE",
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
+        valueString:
+          value && typeof value === "object" && typeof value.valueString === "string"
+            ? value.valueString
+            : undefined,
+        valueNumber:
+          value && typeof value === "object" && typeof value.valueNumber === "number"
+            ? value.valueNumber
+            : undefined,
+        valueBoolean:
+          value && typeof value === "object" && typeof value.valueBoolean === "boolean"
+            ? value.valueBoolean
+            : undefined,
+        comment:
+          value && typeof value === "object" && typeof value.comment === "string"
+=======
         valueString: typeof value === "string" ? value : undefined,
         valueNumber: typeof value === "number" ? value : undefined,
         comment:
@@ -126,6 +287,7 @@ export default function NewEvaluationPage() {
           typeof value === "object" &&
           "comment" in value &&
           typeof value.comment === "string"
+>>>>>>> main
             ? value.comment
             : undefined,
       }));
@@ -135,17 +297,16 @@ export default function NewEvaluationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           evaluationId,
-          modelVersionId,
+          modelVersionId: selectedVersionId,
           answers: answersArray,
         }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Erreur lors du calcul du score");
+        const payload = await res.json();
+        throw new Error(payload.error || "Erreur lors du calcul du score");
       }
 
-      // Redirect to evaluation detail
       router.push(`/evaluations/${evaluationId}`);
     } catch (err: unknown) {
       const message =
@@ -156,7 +317,7 @@ export default function NewEvaluationPage() {
     }
   };
 
-  if (loading) {
+  if (loadingInitialData) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="animate-spin text-blue-400" size={40} />
@@ -164,11 +325,9 @@ export default function NewEvaluationPage() {
     );
   }
 
-  // If evaluation not yet created, show creation form
   if (!evaluationId) {
     return (
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center gap-4">
           <Link
             href="/evaluations"
@@ -179,11 +338,12 @@ export default function NewEvaluationPage() {
           </Link>
           <div>
             <h1 className="text-3xl font-bold text-white">Nouvelle Évaluation</h1>
-            <p className="text-slate-400 mt-2">Créez une nouvelle évaluation de risque</p>
+            <p className="text-slate-400 mt-2">
+              Sélectionnez le projet et la version publiée du modèle de scoring
+            </p>
           </div>
         </div>
 
-        {/* Form Card */}
         <div className="max-w-2xl rounded-lg border border-slate-700 bg-slate-800 p-6">
           {error && (
             <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4 text-red-400 text-sm mb-6">
@@ -191,28 +351,31 @@ export default function NewEvaluationPage() {
             </div>
           )}
 
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
+=======
           {projects.length === 0 && !error && (
             <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-4 text-yellow-400 text-sm mb-6">
               Aucun projet trouvé. Créez un projet d&apos;abord.
             </div>
           )}
 
+>>>>>>> main
           <form onSubmit={handleCreateEvaluation} className="space-y-6">
             <div>
               <label className="block text-sm font-semibold text-slate-300 mb-3">
-                Sélectionner un projet *
+                Projet *
               </label>
               <select
-                value={formData.projectId}
-                onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
                 className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none transition-colors"
                 required
                 disabled={projects.length === 0}
               >
                 <option value="">-- Choisir un projet --</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nom}
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.nom}
                   </option>
                 ))}
               </select>
@@ -220,36 +383,63 @@ export default function NewEvaluationPage() {
 
             <div>
               <label className="block text-sm font-semibold text-slate-300 mb-3">
-                Recommandation
+                Modèle de scoring *
               </label>
               <select
-                value={formData.recommendation}
-                onChange={(e) => setFormData({ ...formData, recommendation: e.target.value })}
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
                 className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none transition-colors"
+                required
+                disabled={models.length === 0}
               >
-                <option value="APPROVE">Approuver</option>
-                <option value="REJECT">Rejeter</option>
-                <option value="PENDING">En attente</option>
+                <option value="">-- Choisir un modèle --</option>
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label} ({model.code})
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-slate-300 mb-3">
-                Notes
+                Version publiée *
               </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none transition-colors"
-                rows={3}
-                placeholder="Ajouter des notes ou commentaires..."
-              />
+              <select
+                value={selectedVersionId}
+                onChange={(e) => setSelectedVersionId(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none transition-colors"
+                required
+                disabled={!selectedModelId || loadingVersions || versions.length === 0}
+              >
+                <option value="">
+                  {loadingVersions
+                    ? "Chargement des versions..."
+                    : "-- Choisir une version publiée --"}
+                </option>
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.label || `v${version.versionNumber}`}
+                  </option>
+                ))}
+              </select>
+              {selectedModelId && !loadingVersions && versions.length === 0 && (
+                <p className="mt-2 text-xs text-amber-400">
+                  Aucune version publiée disponible pour ce modèle.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-md border border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-400">
+              {selectedVersion
+                ? `Version sélectionnée: ${selectedVersion.label || `v${selectedVersion.versionNumber}`}`
+                : "Sélectionnez une version publiée pour charger le questionnaire."}
             </div>
 
             <div className="flex gap-3 pt-4">
               <button
                 type="submit"
-                disabled={submitting || !formData.projectId || projects.length === 0}
+                disabled={submitting || !canCreateEvaluation}
                 className="flex-1 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold px-4 py-3 rounded-lg transition-all flex items-center justify-center gap-2"
               >
                 {submitting ? (
@@ -274,10 +464,8 @@ export default function NewEvaluationPage() {
     );
   }
 
-  // If evaluation created, show questionnaire
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Link
           href="/evaluations"
@@ -292,7 +480,6 @@ export default function NewEvaluationPage() {
         </div>
       </div>
 
-      {/* Questionnaire Card */}
       <div className="rounded-lg border border-slate-700 bg-slate-800 p-6">
         {error && (
           <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4 text-red-400 text-sm mb-6">
@@ -300,12 +487,13 @@ export default function NewEvaluationPage() {
           </div>
         )}
 
-        {questionnaire.length > 0 ? (
+        {loadingQuestionnaire ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="animate-spin text-blue-400" size={26} />
+          </div>
+        ) : questionnaire.length > 0 ? (
           <>
-            <QuestionnaireForm
-              nodes={questionnaire}
-              onAnswersChange={setAnswers}
-            />
+            <QuestionnaireForm nodes={questionnaire} onAnswersChange={setAnswers} />
 
             <div className="flex gap-3 pt-6 mt-6 border-t border-slate-700">
               <button
@@ -332,7 +520,7 @@ export default function NewEvaluationPage() {
           </>
         ) : (
           <div className="text-center py-8">
-            <p className="text-slate-400">Aucun questionnaire disponible</p>
+            <p className="text-slate-400">Aucun questionnaire disponible pour cette version</p>
             <Link
               href="/evaluations"
               className="text-cyan-400 hover:text-cyan-300 mt-4 inline-block"

@@ -24,6 +24,41 @@ psql "$DATABASE_URL" -v table_prefix='BCP_SCORE_GP' \
   -f sql/migrations/20260417_sync_scoring_schema_postgres.sql
 ```
 
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
+
+### 0-ter. **migrations/20260417_upsert_pf_v7pp_hierarchy.sql**
+Script PostgreSQL prêt à l'emploi pour **parser un JSON de modèle scoring** et faire un **upsert hiérarchique** dans:
+- `scoring_models`
+- `scoring_domains`
+- `scoring_criteria`
+- `scoring_subcriteria`
+- `scoring_subsubcriteria`
+
+Caractéristiques:
+- hiérarchie préservée (domain → criteria → subcriteria → subsubcriteria)
+- upsert par `code` (`ON CONFLICT DO UPDATE`)
+- poids stockés en décimal (`numeric`, ex: `0.15`)
+- intégrité référentielle par résolution des IDs parents
+
+```bash
+psql "$DATABASE_URL" -f sql/migrations/20260417_upsert_pf_v7pp_hierarchy.sql
+```
+
+
+### 0-quater. **migrations/20260417_upsert_pf_v7pp_hierarchy_supabase.sql**
+Version **100% Supabase-compatible** du script d'import PF_V7PP:
+- détecte automatiquement le préfixe (`BCP_SCORE_GP` ou `BP_PF`)
+- upsert du modèle + version dans les tables V7++
+- mapping de la hiérarchie JSON vers `*_v7pp_scoring_nodes` (DOMAIN → CRITERION → SUB_CRITERION → SUB_SUB_CRITERION)
+- compatible avec variantes de colonnes (`label`/`name`, présence de `createdBy`, `depth`, etc.)
+
+```bash
+# Dans Supabase SQL Editor:
+# copier/coller le script puis exécuter
+```
+
+=======
+>>>>>>> main
 ### 1. **sync_database_schema.sql**
 Script principal pour synchroniser la base de données avec le schéma Prisma.
 
