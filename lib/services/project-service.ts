@@ -16,6 +16,7 @@ export class ProjectService {
     const validated = createProjectSchema.parse(data);
 
     const { debutConstruction, finConstruction, clientId, ...rest } = validated as any;
+    delete (rest as any).pays;
     const createData: any = {
       ...rest,
       creePar: createdBy,
@@ -135,6 +136,7 @@ export class ProjectService {
 
     // Extract date strings and convert to Date objects; remove undefined fields
     const { debutConstruction, finConstruction, clientId, ...rest } = validated as any;
+    delete (rest as any).pays;
     const updateData: any = { ...rest, dateMiseAJour: new Date() };
     if (debutConstruction !== undefined) updateData.debutConstruction = debutConstruction ? new Date(debutConstruction) : null;
     if (finConstruction !== undefined) updateData.finConstruction = finConstruction ? new Date(finConstruction) : null;
