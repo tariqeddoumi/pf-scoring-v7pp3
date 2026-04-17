@@ -3,8 +3,19 @@ import { withAuth } from "@/lib/auth-middleware";
 import prisma from "@/lib/prisma-client";
 import { createClientSchema } from "@/lib/validation-schemas";
 import { ZodError } from "zod";
+import { randomUUID } from "crypto";
 
-async function handleGET(request: NextRequest, user: any) {
+const getErrorDetails = (error: unknown) => {
+  const err = error as { message?: string; stack?: string; code?: string; name?: string };
+  return {
+    message: err.message ?? "Erreur inconnue",
+    stack: err.stack,
+    code: err.code,
+    name: err.name,
+  };
+};
+
+async function handleGET() {
   try {
     const clients = await prisma.client.findMany({
       include: {
@@ -20,15 +31,16 @@ async function handleGET(request: NextRequest, user: any) {
       data: clients,
       count: clients.length,
     });
-  } catch (error: any) {
-    console.error("[CLIENTS] GET error:", error);
+  } catch (error: unknown) {
+    const err = getErrorDetails(error);
+    console.error("[CLIENTS] GET error:", err);
 
     // Handle Prisma-specific errors
-    if (error.code === "P1001") {
+    if (err.code === "P1001") {
       return NextResponse.json(
         {
           error: "Impossible de se connecter à la base de données",
-          errorCode: "DB_CONNECTION_ERROR",
+          errorCode: "ERR_DB_001",
           details:
             "Vérifiez que les variables d'environnement DATABASE_URL sont correctement configurées",
         },
@@ -38,15 +50,18 @@ async function handleGET(request: NextRequest, user: any) {
 
     return NextResponse.json(
       {
-        error: error.message || "Failed to fetch clients",
-        errorCode: "ERR_API_001",
+        error: err.message || "Failed to fetch clients",
+        errorCode: "ERR_SRV_001",
       },
       { status: 500 }
     );
   }
 }
 
-async function handlePOST(request: NextRequest, user: any) {
+async function handlePOST(request: NextRequest) {
+  const requestId = randomUUID();
+  const timestamp = new Date().toISOString();
+
   try {
     const body = await request.json();
     console.log("[CLIENTS] POST request body:", JSON.stringify(body));
@@ -70,15 +85,19 @@ async function handlePOST(request: NextRequest, user: any) {
         return NextResponse.json(
           {
             error: "Un client avec cet email existe déjà",
-            errorCode: "ERR_API_002",
+            errorCode: "ERR_DB_004",
+            requestId,
+            timestamp,
+            details: "Contrainte d'unicité sur le champ email",
             errors: [
               {
                 field: "email",
-                message: "Cet email est déjà utilisé (ERR_API_002)",
+                message: "Cet email est déjà utilisé",
+                code: "ERR_DB_004",
               },
             ],
           },
-          { status: 400 }
+          { status: 409 }
         );
       }
     }
@@ -120,28 +139,31 @@ async function handlePOST(request: NextRequest, user: any) {
     console.log("[CLIENTS] POST success:", client.id);
 
     return NextResponse.json({ success: true, data: client }, { status: 201 });
-  } catch (error: any) {
-    console.error("[CLIENTS] POST error:", error);
-    console.error("[CLIENTS] Error stack:", error.stack);
-    console.error("[CLIENTS] Error code:", error.code);
-    console.error("[CLIENTS] Error message:", error.message);
+  } catch (error: unknown) {
+    const err = getErrorDetails(error);
+    console.error("[CLIENTS] POST error:", err);
 
     // Gestion des erreurs Zod
     if (error instanceof ZodError) {
-      const errors = error.flatten().fieldErrors;
-      const formattedErrors = Object.entries(errors).map(
-        ([field, messages]) => ({
-          field,
-          message: Array.isArray(messages) ? messages[0] : messages,
-        })
-      );
+      const formattedErrors = error.issues.map((issue) => ({
+        field: issue.path.join(".") || "global",
+        message: issue.message,
+        code: "ERR_VAL_005",
+      }));
 
       console.error("[CLIENTS] Zod validation errors:", formattedErrors);
 
       return NextResponse.json(
         {
-          error: "Validation échouée",
-          errorCode: "ERR_VALID_001",
+          error: "Validation échouée: veuillez corriger les champs signalés.",
+          errorCode: "ERR_VAL_001",
+          details:
+            "Les données soumises ne respectent pas les contraintes fonctionnelles du formulaire client.",
+          requestId,
+          timestamp,
+          developerMessage: error.issues
+            .map((issue) => `${issue.path.join(".") || "global"}: ${issue.code}`)
+            .join(" | "),
           errors: formattedErrors,
         },
         { status: 400 }
@@ -149,28 +171,34 @@ async function handlePOST(request: NextRequest, user: any) {
     }
 
     // Erreur Prisma - email unique constraint
-    if (error.code === "P2002") {
+    if (err.code === "P2002") {
       return NextResponse.json(
         {
           error: "Un client avec cet email existe déjà",
-          errorCode: "ERR_API_002",
+          errorCode: "ERR_DB_004",
+          requestId,
+          timestamp,
+          details: "Contrainte d'unicité Prisma violée",
           errors: [
             {
               field: "email",
-              message: "Cet email est déjà utilisé (ERR_API_002)",
+              message: "Cet email est déjà utilisé",
+              code: "ERR_DB_004",
             },
           ],
         },
-        { status: 400 }
+        { status: 409 }
       );
     }
 
     // Handle Prisma-specific errors
-    if (error.code === "P1001") {
+    if (err.code === "P1001") {
       return NextResponse.json(
         {
           error: "Impossible de se connecter à la base de données",
-          errorCode: "DB_CONNECTION_ERROR",
+          errorCode: "ERR_DB_001",
+          requestId,
+          timestamp,
           details:
             "Vérifiez que les variables d'environnement DATABASE_URL et DIRECT_URL sont correctement configurées",
         },
@@ -179,11 +207,13 @@ async function handlePOST(request: NextRequest, user: any) {
     }
 
     // Handle JSON parse error
-    if (error instanceof SyntaxError && "body" in error) {
+    if (error instanceof SyntaxError) {
       return NextResponse.json(
         {
           error: "Erreur de format des données envoyées",
-          errorCode: "ERR_VALID_001",
+          errorCode: "ERR_SRV_002",
+          requestId,
+          timestamp,
         },
         { status: 400 }
       );
@@ -192,10 +222,13 @@ async function handlePOST(request: NextRequest, user: any) {
     // Generic error
     return NextResponse.json(
       {
-        error: error.message || "Erreur lors de la création du client",
-        errorCode: "ERR_API_001",
+        error: err.message || "Erreur lors de la création du client",
+        errorCode: "ERR_SRV_001",
+        requestId,
+        timestamp,
         debugInfo:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
+          process.env.NODE_ENV === "development" ? err.message : undefined,
+        developerMessage: err.code || err.name || "UNKNOWN_ERROR",
       },
       { status: 500 }
     );
@@ -203,9 +236,9 @@ async function handlePOST(request: NextRequest, user: any) {
 }
 
 export async function GET(request: NextRequest) {
-  return withAuth(request, (req, user) => handleGET(req, user));
+  return withAuth(request, () => handleGET());
 }
 
 export async function POST(request: NextRequest) {
-  return withAuth(request, (req, user) => handlePOST(req, user));
+  return withAuth(request, (req) => handlePOST(req));
 }

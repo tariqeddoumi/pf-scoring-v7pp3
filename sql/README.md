@@ -4,6 +4,58 @@ Ce dossier contient des scripts SQL pour synchroniser et vérifier la conformit�
 
 ## 📋 Scripts Disponibles
 
+### 0. **migrations/20260417_sync_scoring_schema_supabase.sql**
+Script idempotent pour **Supabase** qui:
+- détecte automatiquement le préfixe de tables (`BCP_SCORE_GP` ou `BP_PF`)
+- aligne les tables scoring V7++ avec le schéma Prisma actuel
+- ajoute les colonnes de traçabilité source/override dans les réponses
+- crée les tables de bindings/registry/calculated fields si manquantes
+
+```bash
+# Dans Supabase SQL Editor:
+# copier/coller le contenu du fichier et exécuter.
+```
+
+### 0-bis. **migrations/20260417_sync_scoring_schema_postgres.sql**
+Script équivalent pour PostgreSQL standard (hors Supabase) avec préfixe explicite:
+
+```bash
+psql "$DATABASE_URL" -v table_prefix='BCP_SCORE_GP' \
+  -f sql/migrations/20260417_sync_scoring_schema_postgres.sql
+```
+
+
+### 0-ter. **migrations/20260417_upsert_pf_v7pp_hierarchy.sql**
+Script PostgreSQL prêt à l'emploi pour **parser un JSON de modèle scoring** et faire un **upsert hiérarchique** dans:
+- `scoring_models`
+- `scoring_domains`
+- `scoring_criteria`
+- `scoring_subcriteria`
+- `scoring_subsubcriteria`
+
+Caractéristiques:
+- hiérarchie préservée (domain → criteria → subcriteria → subsubcriteria)
+- upsert par `code` (`ON CONFLICT DO UPDATE`)
+- poids stockés en décimal (`numeric`, ex: `0.15`)
+- intégrité référentielle par résolution des IDs parents
+
+```bash
+psql "$DATABASE_URL" -f sql/migrations/20260417_upsert_pf_v7pp_hierarchy.sql
+```
+
+
+### 0-quater. **migrations/20260417_upsert_pf_v7pp_hierarchy_supabase.sql**
+Version **100% Supabase-compatible** du script d'import PF_V7PP:
+- détecte automatiquement le préfixe (`BCP_SCORE_GP` ou `BP_PF`)
+- upsert du modèle + version dans les tables V7++
+- mapping de la hiérarchie JSON vers `*_v7pp_scoring_nodes` (DOMAIN → CRITERION → SUB_CRITERION → SUB_SUB_CRITERION)
+- compatible avec variantes de colonnes (`label`/`name`, présence de `createdBy`, `depth`, etc.)
+
+```bash
+# Dans Supabase SQL Editor:
+# copier/coller le script puis exécuter
+```
+
 ### 1. **sync_database_schema.sql**
 Script principal pour synchroniser la base de données avec le schéma Prisma.
 

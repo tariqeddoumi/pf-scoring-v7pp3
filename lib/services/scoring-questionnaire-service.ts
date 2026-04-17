@@ -103,6 +103,19 @@ export class ScoringQuestionnaireService {
     return rootNodes;
   }
 
+
+  /**
+   * Get scoring model version by ID
+   */
+  static async getScoringModelVersionById(modelVersionId: string) {
+    return prisma.scoringModelVersion.findUnique({
+      where: { id: modelVersionId },
+      include: {
+        model: true,
+      },
+    });
+  }
+
   /**
    * Get default scoring model (usually the latest published version)
    */

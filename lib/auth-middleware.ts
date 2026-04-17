@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import prisma from "@/lib/prisma-client";
 
 export interface AuthPayload {
   userId: string;
@@ -38,9 +39,27 @@ export async function withAuth(
 ): Promise<NextResponse> {
   const user = await authenticateRequest(request);
   if (!user) {
-    // Allow requests without auth in development or with default mock user
+    // Allow requests without auth with a database-backed fallback user.
+    // This avoids FK violations on entities requiring a valid userId.
+    try {
+      const fallbackUser = await prisma.user.findFirst({
+        orderBy: { createdAt: "asc" },
+        select: { id: true, email: true, role: true },
+      });
+
+      if (fallbackUser) {
+        return handler(request, {
+          userId: fallbackUser.id,
+          email: fallbackUser.email,
+          role: fallbackUser.role as AuthPayload["role"],
+        });
+      }
+    } catch (error) {
+      console.warn("[AUTH] Failed to load fallback user from DB:", error);
+    }
+
     const mockUser: AuthPayload = {
-      userId: "550e8400-e29b-41d4-a716-446655440000", // Valid UUID v4
+      userId: "550e8400-e29b-41d4-a716-446655440000",
       email: "mock@example.com",
       role: "admin",
     };
