@@ -12,6 +12,7 @@ interface Project {
   nom: string;
 }
 
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
 interface ScoringModel {
   id: string;
   label: string;
@@ -37,6 +38,12 @@ interface QuestionnaireResponse {
   modelVersionId?: string;
   error?: string;
 }
+=======
+type EvaluationCreateResponse =
+  | { id: string }
+  | { data?: { id?: string } }
+  | { error?: string };
+>>>>>>> main
 
 export default function NewEvaluationPage() {
   const router = useRouter();
@@ -50,7 +57,7 @@ export default function NewEvaluationPage() {
   const [selectedVersionId, setSelectedVersionId] = useState("");
 
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
 
   const [loadingInitialData, setLoadingInitialData] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -114,6 +121,7 @@ export default function NewEvaluationPage() {
         if (!res.ok) {
           throw new Error("Erreur lors du chargement des versions");
         }
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
 
         const payload = await res.json();
         const allVersions: ScoringVersion[] = payload.data || [];
@@ -126,6 +134,11 @@ export default function NewEvaluationPage() {
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des versions";
+=======
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Erreur lors du chargement des données";
+>>>>>>> main
         setError(message);
       } finally {
         setLoadingVersions(false);
@@ -210,10 +223,31 @@ export default function NewEvaluationPage() {
         throw new Error("Évaluation créée mais identifiant introuvable dans la réponse API.");
       }
 
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
       setEvaluationId(createdId);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la création de l'évaluation";
+=======
+      const payload = (await res.json()) as EvaluationCreateResponse;
+      const createdId =
+        "id" in payload
+          ? payload.id
+          : "data" in payload
+          ? payload.data?.id
+          : undefined;
+
+      if (!createdId) {
+        throw new Error(
+          "Évaluation créée mais identifiant introuvable dans la réponse API."
+        );
+      }
+
+      setEvaluationId(createdId);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Erreur lors de la création";
+>>>>>>> main
       setError(message);
     } finally {
       setSubmitting(false);
@@ -230,6 +264,7 @@ export default function NewEvaluationPage() {
       const answersArray = Object.entries(answers).map(([nodeId, value]) => ({
         nodeId,
         answerType: "VALUE",
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
         valueString:
           value && typeof value === "object" && typeof value.valueString === "string"
             ? value.valueString
@@ -244,6 +279,15 @@ export default function NewEvaluationPage() {
             : undefined,
         comment:
           value && typeof value === "object" && typeof value.comment === "string"
+=======
+        valueString: typeof value === "string" ? value : undefined,
+        valueNumber: typeof value === "number" ? value : undefined,
+        comment:
+          value &&
+          typeof value === "object" &&
+          "comment" in value &&
+          typeof value.comment === "string"
+>>>>>>> main
             ? value.comment
             : undefined,
       }));
@@ -307,6 +351,15 @@ export default function NewEvaluationPage() {
             </div>
           )}
 
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
+=======
+          {projects.length === 0 && !error && (
+            <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-4 text-yellow-400 text-sm mb-6">
+              Aucun projet trouvé. Créez un projet d&apos;abord.
+            </div>
+          )}
+
+>>>>>>> main
           <form onSubmit={handleCreateEvaluation} className="space-y-6">
             <div>
               <label className="block text-sm font-semibold text-slate-300 mb-3">

@@ -24,6 +24,7 @@ psql "$DATABASE_URL" -v table_prefix='BCP_SCORE_GP' \
   -f sql/migrations/20260417_sync_scoring_schema_postgres.sql
 ```
 
+<<<<<<< codex/diagnose-and-fix-client-creation-error-1r2x2n
 
 ### 0-ter. **migrations/20260417_upsert_pf_v7pp_hierarchy.sql**
 Script PostgreSQL prêt à l'emploi pour **parser un JSON de modèle scoring** et faire un **upsert hiérarchique** dans:
@@ -56,6 +57,8 @@ Version **100% Supabase-compatible** du script d'import PF_V7PP:
 # copier/coller le script puis exécuter
 ```
 
+=======
+>>>>>>> main
 ### 1. **sync_database_schema.sql**
 Script principal pour synchroniser la base de données avec le schéma Prisma.
 
