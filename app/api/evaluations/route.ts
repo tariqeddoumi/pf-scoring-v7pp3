@@ -3,12 +3,20 @@ import { withAuth, hasMinimumRole } from "@/lib/auth-middleware";
 import { EvaluationService } from "@/lib/services/evaluation-service";
 import { paginationSchema } from "@/lib/validation-schemas";
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
+};
+
 /**
  * GET /api/evaluations - List all evaluations (paginated)
  */
-async function handleGET(request: NextRequest, user: any) {
+async function handleGET(
+  request: NextRequest,
+  user: { role?: string; userId?: string }
+) {
   try {
-    if (!hasMinimumRole(user.role, "analyst")) {
+    if (!hasMinimumRole(user.role || "", "analyst")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -32,29 +40,38 @@ async function handleGET(request: NextRequest, user: any) {
     );
 
     return NextResponse.json(result, { status: 200 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
 }
 
 /**
  * POST /api/evaluations - Create new evaluation (analyst+)
  */
-async function handlePOST(request: NextRequest, user: any) {
+async function handlePOST(
+  request: NextRequest,
+  user: { role?: string; userId?: string }
+) {
   try {
-    if (!hasMinimumRole(user.role, "analyst")) {
+    if (!hasMinimumRole(user.role || "", "analyst")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await request.json();
     const evaluation = await EvaluationService.createEvaluation(
       body,
-      user.userId
+      user.userId || ""
     );
 
-    return NextResponse.json(evaluation, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: evaluation,
+      },
+      { status: 201 }
+    );
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
 }
 

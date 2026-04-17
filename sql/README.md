@@ -4,6 +4,26 @@ Ce dossier contient des scripts SQL pour synchroniser et vérifier la conformit�
 
 ## 📋 Scripts Disponibles
 
+### 0. **migrations/20260417_sync_scoring_schema_supabase.sql**
+Script idempotent pour **Supabase** qui:
+- détecte automatiquement le préfixe de tables (`BCP_SCORE_GP` ou `BP_PF`)
+- aligne les tables scoring V7++ avec le schéma Prisma actuel
+- ajoute les colonnes de traçabilité source/override dans les réponses
+- crée les tables de bindings/registry/calculated fields si manquantes
+
+```bash
+# Dans Supabase SQL Editor:
+# copier/coller le contenu du fichier et exécuter.
+```
+
+### 0-bis. **migrations/20260417_sync_scoring_schema_postgres.sql**
+Script équivalent pour PostgreSQL standard (hors Supabase) avec préfixe explicite:
+
+```bash
+psql "$DATABASE_URL" -v table_prefix='BCP_SCORE_GP' \
+  -f sql/migrations/20260417_sync_scoring_schema_postgres.sql
+```
+
 ### 1. **sync_database_schema.sql**
 Script principal pour synchroniser la base de données avec le schéma Prisma.
 

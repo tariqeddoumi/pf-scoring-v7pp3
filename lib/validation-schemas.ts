@@ -76,6 +76,41 @@ const intOrString = (defaultVal: number | null = null) =>
     z.string().transform(v => v === "" ? defaultVal : parseInt(v)).pipe(z.number().nullable()),
   ]).nullable().optional();
 
+const nullableStringToNumber = (value: unknown): number | null | unknown => {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(",", "."));
+    return Number.isNaN(parsed) ? value : parsed;
+  }
+  return value;
+};
+
+const nonNegativeIntField = (fieldLabel: string) =>
+  z.preprocess(
+    nullableStringToNumber,
+    z
+      .number({
+        message: `${fieldLabel} doit être un nombre entier (ERR_VAL_005)`,
+      })
+      .int(`${fieldLabel} doit être un nombre entier (ERR_VAL_005)`)
+      .min(0, `${fieldLabel} doit être supérieur ou égal à 0 (ERR_VAL_005)`)
+      .nullable()
+      .optional()
+  );
+
+const nonNegativeFloatField = (fieldLabel: string) =>
+  z.preprocess(
+    nullableStringToNumber,
+    z
+      .number({
+        message: `${fieldLabel} doit être un nombre valide (ERR_VAL_005)`,
+      })
+      .min(0, `${fieldLabel} doit être supérieur ou égal à 0 (ERR_VAL_005)`)
+      .nullable()
+      .optional()
+  );
+
 export const createProjectSchema = z.object({
   nom: z
     .string()
@@ -166,9 +201,9 @@ export const createClientSchema = z.object({
   typeClient: z.string().max(50).nullable().optional(),
   formeJuridique: z.string().max(50).nullable().optional(),
   segmentClientele: z.string().max(100).nullable().optional(),
-  effectifs: z.union([z.number().int().min(0), z.string().transform(v => v === "" ? null : parseInt(v)).pipe(z.number().nullable())]).nullable().optional(),
-  capitalSocial: z.union([z.number().min(0), z.string().transform(v => v === "" ? null : parseFloat(v)).pipe(z.number().nullable())]).nullable().optional(),
-  chiffreAffaires: z.union([z.number().min(0), z.string().transform(v => v === "" ? null : parseFloat(v)).pipe(z.number().nullable())]).nullable().optional(),
+  effectifs: nonNegativeIntField("Effectifs"),
+  capitalSocial: nonNegativeFloatField("Capital social"),
+  chiffreAffaires: nonNegativeFloatField("Chiffre d'affaires"),
   ville: z.string().trim().max(100).nullable().optional(),
   adresse: z.string().trim().max(500).nullable().optional(),
   codePostal: z.string().trim().max(20).nullable().optional(),
@@ -178,7 +213,7 @@ export const createClientSchema = z.object({
   ratingInterne: z.string().max(10).nullable().optional(),
   statutBancaire: z.string().max(50).nullable().optional(),
   dateRelation: z.string().nullable().optional(),
-  exposition: z.union([z.number().min(0), z.string().transform(v => v === "" ? null : parseFloat(v)).pipe(z.number().nullable())]).nullable().optional(),
+  exposition: nonNegativeFloatField("Exposition"),
   statusKYC: z.string().max(50).nullable().optional(),
   statusConformite: z.string().max(50).nullable().optional(),
   status: z.string().max(50).nullable().optional(),

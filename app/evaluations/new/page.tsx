@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, FileText, BarChart3 } from "lucide-react";
-import { Tabs } from "@/components/ui/Tabs";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { QuestionnaireForm } from "@/components/scoring/QuestionnaireForm";
 import type { QuestionnaireNode } from "@/lib/services/scoring-questionnaire-service";
 
@@ -12,6 +11,11 @@ interface Project {
   id: string;
   nom: string;
 }
+
+type EvaluationCreateResponse =
+  | { id: string }
+  | { data?: { id?: string } }
+  | { error?: string };
 
 export default function NewEvaluationPage() {
   const router = useRouter();
@@ -22,7 +26,7 @@ export default function NewEvaluationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
 
   const [formData, setFormData] = useState({
     projectId: "",
@@ -50,8 +54,10 @@ export default function NewEvaluationPage() {
           setQuestionnaire(qData.data || []);
           setModelVersionId(qData.modelVersionId);
         }
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Erreur lors du chargement des données";
+        setError(message);
       } finally {
         setLoading(false);
       }
@@ -77,10 +83,25 @@ export default function NewEvaluationPage() {
         throw new Error(errorData.error || "Erreur lors de la création");
       }
 
-      const newEval = await res.json();
-      setEvaluationId(newEval.data.id);
-    } catch (err: any) {
-      setError(err.message);
+      const payload = (await res.json()) as EvaluationCreateResponse;
+      const createdId =
+        "id" in payload
+          ? payload.id
+          : "data" in payload
+          ? payload.data?.id
+          : undefined;
+
+      if (!createdId) {
+        throw new Error(
+          "Évaluation créée mais identifiant introuvable dans la réponse API."
+        );
+      }
+
+      setEvaluationId(createdId);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Erreur lors de la création";
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -100,7 +121,13 @@ export default function NewEvaluationPage() {
         answerType: "VALUE",
         valueString: typeof value === "string" ? value : undefined,
         valueNumber: typeof value === "number" ? value : undefined,
-        comment: value.comment,
+        comment:
+          value &&
+          typeof value === "object" &&
+          "comment" in value &&
+          typeof value.comment === "string"
+            ? value.comment
+            : undefined,
       }));
 
       const res = await fetch("/api/evaluations/calculate-score", {
@@ -120,8 +147,10 @@ export default function NewEvaluationPage() {
 
       // Redirect to evaluation detail
       router.push(`/evaluations/${evaluationId}`);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Erreur lors du calcul du score";
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -164,7 +193,7 @@ export default function NewEvaluationPage() {
 
           {projects.length === 0 && !error && (
             <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-4 text-yellow-400 text-sm mb-6">
-              Aucun projet trouvé. Créez un projet d'abord.
+              Aucun projet trouvé. Créez un projet d&apos;abord.
             </div>
           )}
 
@@ -258,7 +287,7 @@ export default function NewEvaluationPage() {
           <ArrowLeft size={20} className="text-slate-400" />
         </Link>
         <div>
-          <h1 className="text-3xl font-bold text-white">Compléter l'Évaluation</h1>
+          <h1 className="text-3xl font-bold text-white">Compléter l&apos;Évaluation</h1>
           <p className="text-slate-400 mt-2">Répondez aux questions de scoring</p>
         </div>
       </div>
