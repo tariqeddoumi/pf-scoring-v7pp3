@@ -4,10 +4,20 @@ import { withAuth } from "@/lib/auth-middleware";
 import prisma from "@/lib/prisma-client";
 import { createClientSchema } from "@/lib/validation-schemas";
 import { ZodError } from "zod";
+import { randomUUID } from "crypto";
+
+const getErrorDetails = (error: unknown) => {
+  const err = error as { message?: string; code?: string; name?: string };
+  return {
+    message: err.message ?? "Erreur inconnue",
+    code: err.code,
+    name: err.name,
+  };
+};
 
 async function handleGET(
-  request: NextRequest,
-  user: any,
+  _request: NextRequest,
+  _user: unknown,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -28,8 +38,8 @@ async function handleGET(
       success: true,
       data: client,
     });
-  } catch (error: any) {
-    console.error("[CLIENT GET]", error);
+  } catch (error: unknown) {
+    console.error("[CLIENT GET]", getErrorDetails(error));
     return NextResponse.json(
       { error: "Failed to fetch client" },
       { status: 500 }
@@ -39,9 +49,12 @@ async function handleGET(
 
 async function handlePUT(
   request: NextRequest,
-  user: any,
+  _user: unknown,
   { params }: { params: { id: string } }
 ) {
+  const requestId = randomUUID();
+  const timestamp = new Date().toISOString();
+
   try {
     const body = await request.json();
 
@@ -49,16 +62,24 @@ async function handlePUT(
     let validated;
     try {
       validated = createClientSchema.parse(body);
-    } catch (validationError: any) {
+    } catch (validationError: unknown) {
       console.error("[CLIENT PUT] Validation error:", validationError);
       if (validationError instanceof ZodError) {
         return NextResponse.json(
           {
-            error: "Validation error",
-            errorCode: "VALIDATION_ERROR",
+            error: "Validation échouée: veuillez corriger les champs signalés.",
+            errorCode: "ERR_VAL_001",
+            requestId,
+            timestamp,
+            details:
+              "Les données soumises ne respectent pas les contraintes fonctionnelles du formulaire client.",
+            developerMessage: validationError.issues
+              .map((issue) => `${issue.path.join(".") || "global"}: ${issue.code}`)
+              .join(" | "),
             errors: validationError.issues.map((err) => ({
-              field: err.path.join("."),
+              field: err.path.join(".") || "global",
               message: err.message,
+              code: "ERR_VAL_005",
             })),
           },
           { status: 400 }
@@ -85,16 +106,19 @@ async function handlePUT(
       if (emailExists) {
         return NextResponse.json(
           {
-            error: "Email already in use",
-            errorCode: "EMAIL_IN_USE",
+            error: "Un client avec cet email existe déjà",
+            errorCode: "ERR_DB_004",
+            requestId,
+            timestamp,
             errors: [
               {
                 field: "email",
-                message: "This email is already used by another client",
+                message: "Cet email est déjà utilisé",
+                code: "ERR_DB_004",
               },
             ],
           },
-          { status: 400 }
+          { status: 409 }
         );
       }
     }
@@ -144,18 +168,59 @@ async function handlePUT(
       success: true,
       data: updatedClient,
     });
-  } catch (error: any) {
-    console.error("[CLIENT PUT]", error);
+  } catch (error: unknown) {
+    const err = getErrorDetails(error);
+    console.error("[CLIENT PUT]", err);
+    if (err.code === "P2002") {
+      return NextResponse.json(
+        {
+          error: "Un client avec cet email existe déjà",
+          errorCode: "ERR_DB_004",
+          requestId,
+          timestamp,
+          details: "Contrainte d'unicité Prisma violée",
+          errors: [
+            {
+              field: "email",
+              message: "Cet email est déjà utilisé",
+              code: "ERR_DB_004",
+            },
+          ],
+        },
+        { status: 409 }
+      );
+    }
+
+    if (err.code === "P1001") {
+      return NextResponse.json(
+        {
+          error: "Impossible de se connecter à la base de données",
+          errorCode: "ERR_DB_001",
+          requestId,
+          timestamp,
+          details:
+            "Vérifiez que les variables d'environnement DATABASE_URL et DIRECT_URL sont correctement configurées",
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Failed to update client" },
+      {
+        error: "Erreur lors de la mise à jour du client",
+        errorCode: "ERR_SRV_001",
+        requestId,
+        timestamp,
+        developerMessage: err.code || err.name || "UNKNOWN_ERROR",
+      },
       { status: 500 }
     );
   }
 }
 
 async function handleDELETE(
-  request: NextRequest,
-  user: any,
+  _request: NextRequest,
+  _user: unknown,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -175,8 +240,8 @@ async function handleDELETE(
       success: true,
       message: "Client deleted successfully",
     });
-  } catch (error: any) {
-    console.error("[CLIENT DELETE]", error);
+  } catch (error: unknown) {
+    console.error("[CLIENT DELETE]", getErrorDetails(error));
     return NextResponse.json(
       { error: "Failed to delete client" },
       { status: 500 }
