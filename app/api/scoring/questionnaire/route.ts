@@ -3,21 +3,32 @@ import { withAuth } from "@/lib/auth-middleware";
 import { ScoringQuestionnaireService } from "@/lib/services/scoring-questionnaire-service";
 
 /**
- * GET /api/scoring/questionnaire - Get questionnaire nodes for default model
+ * GET /api/scoring/questionnaire - Get questionnaire nodes
+ * - with ?modelVersionId=... => specific version
+ * - without modelVersionId => latest published default version
  */
 async function handleGET(request: NextRequest, user: any) {
   try {
-    // Get default scoring model version
-    const modelVersion = await ScoringQuestionnaireService.getDefaultScoringModel();
+    const { searchParams } = new URL(request.url);
+    const requestedModelVersionId = searchParams.get("modelVersionId");
+
+    let modelVersion = null;
+
+    if (requestedModelVersionId) {
+      modelVersion = await ScoringQuestionnaireService.getScoringModelVersionById(
+        requestedModelVersionId
+      );
+    } else {
+      modelVersion = await ScoringQuestionnaireService.getDefaultScoringModel();
+    }
 
     if (!modelVersion) {
       return NextResponse.json(
-        { error: "No published scoring model found" },
+        { error: "No scoring model version found" },
         { status: 404 }
       );
     }
 
-    // Get questionnaire nodes
     const questionnaire = await ScoringQuestionnaireService.getQuestionnaire(
       modelVersion.id
     );
@@ -30,6 +41,7 @@ async function handleGET(request: NextRequest, user: any) {
           id: modelVersion.id,
           versionNumber: modelVersion.versionNumber,
           label: modelVersion.label,
+          modelId: modelVersion.modelId,
         },
       },
       { status: 200 }

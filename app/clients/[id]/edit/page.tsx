@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Client } from "@/lib/types/models";
 import { useState, useEffect } from "react";
 import {
   ArrowLeft,
@@ -15,6 +14,12 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Tabs } from "@/components/ui/Tabs";
+import {
+  ApiErrorPayload,
+  CLIENT_FORM_OPTIONS,
+  ClientFormData,
+  getDefaultClientFormData,
+} from "@/lib/client-form-config";
 
 export default function EditClientPage({
   params,
@@ -24,57 +29,11 @@ export default function EditClientPage({
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiErrorPayload | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [clientId, setClientId] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<any>({
-    // Identité & Administration
-    nom: "",
-    raisonSociale: "",
-    nomCommercial: "",
-    typeClient: "Entreprise",
-    formeJuridique: "",
-    // Organisation & Secteur
-    secteur: "",
-    segmentClientele: "",
-    effectifs: "",
-    capitalSocial: "",
-    chiffreAffaires: "",
-    // Localisation
-    pays: "Maroc",
-    ville: "",
-    adresse: "",
-    codePostal: "",
-    // Coordonnées
-    email: "",
-    telephone: "",
-    website: "",
-    // Relations Bancaires
-    centreAffaires: "",
-    gestionnaire: "",
-    ratingInterne: "",
-    statutBancaire: "Prospect",
-    dateRelation: "",
-    exposition: "",
-    // KYC & Compliance
-    statusKYC: "En attente",
-    statusConformite: "En attente",
-    // Autres
-    description: "",
-    status: "Actif",
-  });
-
-  const [parameterizations, setParameterizations] = useState<any>({
-    sectors: [],
-    clientTypes: [],
-    legalForms: [],
-    clientSegments: [],
-    bankStatuses: [],
-    internalRatings: [],
-    kycStatuses: [],
-    complianceStatuses: [],
-  });
+  const [formData, setFormData] = useState<ClientFormData>(getDefaultClientFormData());
 
   // Resolve params and fetch data
   useEffect(() => {
@@ -86,18 +45,27 @@ export default function EditClientPage({
         // Fetch client data
         const clientResponse = await fetch(`/api/clients/${id}`);
         if (!clientResponse.ok) throw new Error("Failed to fetch client");
-        const clientData = await clientResponse.json();
-        const client = clientData.data || clientData;
+        const clientData = (await clientResponse.json()) as {
+          data?: Partial<ClientFormData> & { dateRelation?: string | null };
+        };
+        const client = clientData.data || {};
 
         // Format dates
         if (client.dateRelation) {
           client.dateRelation = client.dateRelation.split('T')[0];
         }
 
-        setFormData(client);
+        setFormData((prev) => ({
+          ...prev,
+          ...(client as Partial<ClientFormData>),
+        }));
         setError(null);
-      } catch (err: any) {
-        setError(err.message || "Failed to load client");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to load client";
+        setError({
+          error: message,
+          errorCode: "ERR_API_001",
+        });
       } finally {
         setLoading(false);
       }
@@ -112,7 +80,7 @@ export default function EditClientPage({
     >
   ) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -140,13 +108,21 @@ export default function EditClientPage({
         body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as ApiErrorPayload;
 
       if (!response.ok) {
-        setError(data.error || "Failed to update client");
+        setError({
+          error: data.error || "Failed to update client",
+          errorCode: data.errorCode,
+          errors: Array.isArray(data.errors) ? data.errors : [],
+          details: data.details,
+          requestId: data.requestId,
+          timestamp: data.timestamp,
+          developerMessage: data.developerMessage,
+        });
         if (data.errors && Array.isArray(data.errors)) {
           const errors: Record<string, string> = {};
-          data.errors.forEach((err: any) => {
+          data.errors.forEach((err) => {
             errors[err.field] = err.message;
           });
           setFieldErrors(errors);
@@ -155,8 +131,12 @@ export default function EditClientPage({
       }
 
       router.push(`/clients/${clientId}`);
-    } catch (err: any) {
-      setError(err.message || "Failed to update client");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update client";
+      setError({
+        error: message,
+        errorCode: "ERR_NET_001",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -286,13 +266,24 @@ export default function EditClientPage({
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 Secteur
               </label>
-              <input
-                type="text"
+              <select
                 name="secteur"
                 value={formData.secteur || ""}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-              />
+                className={`w-full px-4 py-2 bg-slate-700 border ${
+                  fieldErrors.secteur ? "border-red-500" : "border-slate-600"
+                } rounded-lg text-white focus:outline-none focus:border-blue-500`}
+              >
+                <option value="">Sélectionner</option>
+                {CLIENT_FORM_OPTIONS.secteurs.map((secteur) => (
+                  <option key={secteur} value={secteur}>
+                    {secteur}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.secteur && (
+                <p className="text-red-400 text-sm mt-1">{fieldErrors.secteur}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -322,8 +313,14 @@ export default function EditClientPage({
                 name="effectifs"
                 value={formData.effectifs || ""}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                min={0}
+                className={`w-full px-4 py-2 bg-slate-700 border ${
+                  fieldErrors.effectifs ? "border-red-500" : "border-slate-600"
+                } rounded-lg text-white focus:outline-none focus:border-blue-500`}
               />
+              {fieldErrors.effectifs && (
+                <p className="text-red-400 text-sm mt-1">{fieldErrors.effectifs}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -334,8 +331,14 @@ export default function EditClientPage({
                 name="capitalSocial"
                 value={formData.capitalSocial || ""}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                min={0}
+                className={`w-full px-4 py-2 bg-slate-700 border ${
+                  fieldErrors.capitalSocial ? "border-red-500" : "border-slate-600"
+                } rounded-lg text-white focus:outline-none focus:border-blue-500`}
               />
+              {fieldErrors.capitalSocial && (
+                <p className="text-red-400 text-sm mt-1">{fieldErrors.capitalSocial}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -346,8 +349,14 @@ export default function EditClientPage({
                 name="chiffreAffaires"
                 value={formData.chiffreAffaires || ""}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                min={0}
+                className={`w-full px-4 py-2 bg-slate-700 border ${
+                  fieldErrors.chiffreAffaires ? "border-red-500" : "border-slate-600"
+                } rounded-lg text-white focus:outline-none focus:border-blue-500`}
               />
+              {fieldErrors.chiffreAffaires && (
+                <p className="text-red-400 text-sm mt-1">{fieldErrors.chiffreAffaires}</p>
+              )}
             </div>
           </div>
           <div>
@@ -376,13 +385,24 @@ export default function EditClientPage({
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 Pays
               </label>
-              <input
-                type="text"
+              <select
                 name="pays"
                 value={formData.pays || ""}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-              />
+                className={`w-full px-4 py-2 bg-slate-700 border ${
+                  fieldErrors.pays ? "border-red-500" : "border-slate-600"
+                } rounded-lg text-white focus:outline-none focus:border-blue-500`}
+              >
+                <option value="">Sélectionner</option>
+                {CLIENT_FORM_OPTIONS.pays.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.pays && (
+                <p className="text-red-400 text-sm mt-1">{fieldErrors.pays}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -573,8 +593,14 @@ export default function EditClientPage({
                 name="exposition"
                 value={formData.exposition || ""}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                min={0}
+                className={`w-full px-4 py-2 bg-slate-700 border ${
+                  fieldErrors.exposition ? "border-red-500" : "border-slate-600"
+                } rounded-lg text-white focus:outline-none focus:border-blue-500`}
               />
+              {fieldErrors.exposition && (
+                <p className="text-red-400 text-sm mt-1">{fieldErrors.exposition}</p>
+              )}
             </div>
           </div>
         </div>
@@ -646,8 +672,34 @@ export default function EditClientPage({
 
       {/* Error Message */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
-          {error}
+        <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 text-red-300 text-sm space-y-2">
+          <div className="font-semibold text-red-200">{error.error}</div>
+          {error.errorCode && (
+            <div className="text-xs text-red-300/90">
+              Code erreur: <span className="font-mono">{error.errorCode}</span>
+            </div>
+          )}
+          {error.details && <div className="text-xs text-red-300/90">{error.details}</div>}
+          {error.errors && error.errors.length > 0 && (
+            <ul className="list-disc list-inside text-xs space-y-1">
+              {error.errors.map((err, idx) => (
+                <li key={`${err.field}-${idx}`}>
+                  <span className="font-medium">{err.field}</span>: {err.message}
+                  {err.code ? ` (${err.code})` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+          {(error.requestId || error.timestamp || error.developerMessage) && (
+            <details className="text-xs text-red-200/80">
+              <summary className="cursor-pointer">Détails techniques (support/dev)</summary>
+              <div className="mt-2 space-y-1 font-mono">
+                {error.requestId && <div>requestId: {error.requestId}</div>}
+                {error.timestamp && <div>timestamp: {error.timestamp}</div>}
+                {error.developerMessage && <div>debug: {error.developerMessage}</div>}
+              </div>
+            </details>
+          )}
         </div>
       )}
 
