@@ -56,6 +56,7 @@ Version **100% Supabase-compatible** du script d'import PF_V7PP:
 # copier/coller le script puis exécuter
 ```
 
+
 ### 1. **sync_database_schema.sql**
 Script principal pour synchroniser la base de données avec le schéma Prisma.
 

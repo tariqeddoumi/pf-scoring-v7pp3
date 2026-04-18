@@ -38,6 +38,7 @@ interface QuestionnaireResponse {
   error?: string;
 }
 
+
 export default function NewEvaluationPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -50,7 +51,7 @@ export default function NewEvaluationPage() {
   const [selectedVersionId, setSelectedVersionId] = useState("");
 
   const [evaluationId, setEvaluationId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
 
   const [loadingInitialData, setLoadingInitialData] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -126,6 +127,7 @@ export default function NewEvaluationPage() {
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des versions";
+
         setError(message);
       } finally {
         setLoadingVersions(false);
@@ -208,6 +210,10 @@ export default function NewEvaluationPage() {
 
       if (!createdId) {
         throw new Error("Évaluation créée mais identifiant introuvable dans la réponse API.");
+      setEvaluationId(createdId);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Erreur lors de la création de l'évaluation";
       }
 
       setEvaluationId(createdId);
@@ -306,6 +312,7 @@ export default function NewEvaluationPage() {
               {error}
             </div>
           )}
+
 
           <form onSubmit={handleCreateEvaluation} className="space-y-6">
             <div>
