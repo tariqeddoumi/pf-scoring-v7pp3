@@ -104,10 +104,11 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const { provider } = await resolveRouteParams(context as any);
+    const { provider } = await resolveRouteParams(
+      context as RouteContext<{ provider: string }>
+    );
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get("code");
-    const state = searchParams.get("state");
 
     if (!code) {
       return NextResponse.json(
@@ -169,9 +170,9 @@ export async function GET(
 
     const response = NextResponse.redirect(dashboardUrl);
     response.cookies.set("auth_token", token, {
-      httpOnly: false, // Allow JavaScript to read for Bearer token
+      httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       maxAge: 86400,
       path: "/",
     });

@@ -14,7 +14,7 @@ export class ScoringGridService {
       gridName: version.model.label,
       versionCode: `v${version.versionNumber}`,
       versionLabel: version.label,
-      modelType: version.model.modelType,
+      modelType: "PROJECT_FINANCE",
       status: version.status,
       effectiveDate: version.effectiveDate,
       endDate: version.expiryDate,
@@ -34,7 +34,6 @@ export class ScoringGridService {
     gridName: string;
     versionLabel: string;
     createdBy: string;
-    modelType?: string;
     notes?: string;
   }) {
     const existingModel = await prisma.scoringModel.findUnique({
@@ -47,7 +46,6 @@ export class ScoringGridService {
         data: {
           code: input.gridCode,
           label: input.gridName,
-          modelType: input.modelType ?? "PROJECT_FINANCE",
           status: "DRAFT",
           ownerBusinessId: input.createdBy,
         },

@@ -450,23 +450,24 @@ export class ScoringValidationService {
             severity: "ERROR",
           });
         } else {
+          const numericValue = answer.valueNumber;
           const inRange = node.ranges.some(
             (r) =>
-              answer.valueNumber >= r.minValue &&
-              answer.valueNumber <= r.maxValue
+              numericValue >= r.minValue &&
+              numericValue <= r.maxValue
           );
           if (!inRange && node.ranges.length > 0) {
             warnings.push({
               code: "VALUE_OUT_OF_RANGE",
-              message: `Value ${answer.valueNumber} is outside defined ranges`,
-              context: { value: answer.valueNumber },
+              message: `Value ${numericValue} is outside defined ranges`,
+              context: { value: numericValue },
             });
           }
         }
         break;
 
       case "PERCENTAGE":
-        if (answer.valueNumber === undefined) {
+        if (answer.valueNumber === undefined || answer.valueNumber === null) {
           errors.push({
             code: "PERCENTAGE_REQUIRED",
             message: "Percentage value is required",

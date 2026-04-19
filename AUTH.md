@@ -21,11 +21,11 @@ Cela crée automatiquement une session avec l'utilisateur admin et vous permet d
 
 **API Bypass:**
 
-- **POST** `/api/projects-bypass` - Créer un projet sans authentification
-- **GET** `/api/projects-bypass` - Lister les projets
+- **POST** `/api/projects` - Créer un projet sans authentification
+- **GET** `/api/projects` - Lister les projets
 
 ```bash
-curl -X POST http://localhost:3000/api/projects-bypass \
+curl -X POST http://localhost:3000/api/projects \
   -H "Content-Type: application/json" \
   -d '{
     "nom": "Nouveau Projet",
@@ -181,8 +181,8 @@ curl http://localhost:3000/api/auth/users/user_id \
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@pf-scoring.ma",
-    "password": "Admin123!"
+    "email": "<admin-email>",
+    "password": "<admin-password>"
   }'
 ```
 
@@ -193,7 +193,7 @@ curl -X POST http://localhost:3000/api/auth/login \
   "success": true,
   "user": {
     "id": "uuid",
-    "email": "admin@pf-scoring.ma",
+    "email": "<admin-email>",
     "nom": "Utilisateur",
     "prenom": "Admin",
     "role": "admin"
@@ -260,7 +260,7 @@ Le fichier `middleware.ts` protège automatiquement toutes les routes sauf:
 
 | Email                  | Mot de passe | Rôle     |
 | ---------------------- | ------------ | -------- |
-| admin@pf-scoring.ma    | Admin123!    | admin    |
+| <admin-email>    | <admin-password>    | admin    |
 | analyste@pf-scoring.ma | Analyste123! | analyste |
 
 ## ⚙️ Configuration de l'Environnement
@@ -305,7 +305,7 @@ NODE_ENV=development
 ## 📝 Notes de Développement
 
 - Le mode bypass est destiné au **développement/test uniquement**
-- Supprimer l'endpoint `/api/projects-bypass` en production
+- Supprimer l'endpoint `/api/projects` en production
 - Configurer les variables OAuth avant le déploiement
 - Modifier le `JWT_SECRET` en production
 - Activer `secure: true` pour les cookies en HTTPS

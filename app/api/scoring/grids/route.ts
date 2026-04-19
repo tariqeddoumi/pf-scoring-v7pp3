@@ -18,7 +18,6 @@ async function handlePOST(request: NextRequest, user: unknown) {
     gridCode: string;
     gridName: string;
     versionLabel: string;
-    modelType?: string;
     notes?: string;
   };
 
@@ -30,7 +29,6 @@ async function handlePOST(request: NextRequest, user: unknown) {
     gridCode: body.gridCode,
     gridName: body.gridName,
     versionLabel: body.versionLabel,
-    modelType: body.modelType,
     notes: body.notes,
     createdBy: String((user as { userId: string }).userId),
   });

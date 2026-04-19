@@ -38,7 +38,6 @@ interface QuestionnaireResponse {
   error?: string;
 }
 
-
 export default function NewEvaluationPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -127,7 +126,6 @@ export default function NewEvaluationPage() {
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des versions";
-
         setError(message);
       } finally {
         setLoadingVersions(false);
@@ -210,10 +208,6 @@ export default function NewEvaluationPage() {
 
       if (!createdId) {
         throw new Error("Évaluation créée mais identifiant introuvable dans la réponse API.");
-      setEvaluationId(createdId);
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Erreur lors de la création de l'évaluation";
       }
 
       setEvaluationId(createdId);
@@ -233,26 +227,38 @@ export default function NewEvaluationPage() {
       setSubmitting(true);
       setError("");
 
-      const answersArray = Object.entries(answers).map(([nodeId, value]) => ({
-        nodeId,
-        answerType: "VALUE",
-        valueString:
-          value && typeof value === "object" && typeof value.valueString === "string"
-            ? value.valueString
-            : undefined,
-        valueNumber:
-          value && typeof value === "object" && typeof value.valueNumber === "number"
-            ? value.valueNumber
-            : undefined,
-        valueBoolean:
-          value && typeof value === "object" && typeof value.valueBoolean === "boolean"
-            ? value.valueBoolean
-            : undefined,
-        comment:
-          value && typeof value === "object" && typeof value.comment === "string"
-            ? value.comment
-            : undefined,
-      }));
+      const answersArray = Object.entries(answers).map(([nodeId, value]) => {
+        const answerValue =
+          value && typeof value === "object"
+            ? (value as {
+                valueString?: string;
+                valueNumber?: number;
+                valueBoolean?: boolean;
+                comment?: string;
+              })
+            : undefined;
+
+        return {
+          nodeId,
+          answerType: "VALUE",
+          valueString:
+            answerValue && typeof answerValue.valueString === "string"
+              ? answerValue.valueString
+              : undefined,
+          valueNumber:
+            answerValue && typeof answerValue.valueNumber === "number"
+              ? answerValue.valueNumber
+              : undefined,
+          valueBoolean:
+            answerValue && typeof answerValue.valueBoolean === "boolean"
+              ? answerValue.valueBoolean
+              : undefined,
+          comment:
+            answerValue && typeof answerValue.comment === "string"
+              ? answerValue.comment
+              : undefined,
+        };
+      });
 
       const res = await fetch("/api/evaluations/calculate-score", {
         method: "POST",
@@ -313,6 +319,11 @@ export default function NewEvaluationPage() {
             </div>
           )}
 
+          {projects.length === 0 && !error && (
+            <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-4 text-yellow-400 text-sm mb-6">
+              Aucun projet trouvé. Créez un projet d&apos;abord.
+            </div>
+          )}
 
           <form onSubmit={handleCreateEvaluation} className="space-y-6">
             <div>
