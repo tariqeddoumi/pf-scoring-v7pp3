@@ -16,9 +16,9 @@
 --   represented as ScoringNode depth 0..3.
 -- ============================================================================
 
-DO $$
+DO $plpgsql$
 DECLARE
-  payload jsonb := $$
+  payload jsonb := $json$
   {
     "model_code": "PF_V7PP",
     "model_name": "Project Finance Scoring V7++",
@@ -248,7 +248,7 @@ DECLARE
       }
     ]
   }
-  $$::jsonb;
+  $json$::jsonb;
 
   pfx text;
   model_tbl text;
@@ -702,4 +702,4 @@ BEGIN
   END LOOP;
 
   RAISE NOTICE 'PF_V7PP import complete for prefix=% model_id=% version_id=%', pfx, model_id, version_id;
-END $$;
+END $plpgsql$;
