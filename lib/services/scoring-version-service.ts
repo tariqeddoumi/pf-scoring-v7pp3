@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma-client";
+import { ScoringValidationService } from "@/lib/services/scoring-validation-service";
 
 export class ScoringVersionService {
   /**
@@ -98,7 +99,12 @@ export class ScoringVersionService {
       );
     }
 
-    let updateData: any = {
+    const updateData: {
+      status: "DRAFT" | "IN_REVIEW" | "APPROVED" | "PUBLISHED" | "RETIRED" | "ARCHIVED";
+      updatedAt: Date;
+      validatedBy?: string;
+      validatedAt?: Date;
+    } = {
       status: targetStatus,
       updatedAt: new Date(),
     };
@@ -146,6 +152,15 @@ export class ScoringVersionService {
 
     if (version.status !== "APPROVED") {
       throw new Error("Only approved versions can be published");
+    }
+
+    const validation = await ScoringValidationService.validateVersionForPublication(versionId);
+    if (!validation.valid) {
+      throw new Error(
+        `Version consistency validation failed: ${validation.errors
+          .map((error) => error.code)
+          .join(", ")}`
+      );
     }
 
     // Unpublish current published version if exists

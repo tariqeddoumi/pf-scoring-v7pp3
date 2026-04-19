@@ -21,7 +21,7 @@
 
 ```bash
 # Créer un projet
-curl -X POST https://votre-app.vercel.app/api/projects-bypass \
+curl -X POST https://votre-app.vercel.app/api/projects \
   -H "Content-Type: application/json" \
   -d '{
     "nom": "Mon Projet",
@@ -32,7 +32,7 @@ curl -X POST https://votre-app.vercel.app/api/projects-bypass \
   }'
 
 # Récupérer vos projets
-curl https://votre-app.vercel.app/api/projects-bypass
+curl https://votre-app.vercel.app/api/projects
 ```
 
 ## ✅ Tester l'authentification
@@ -41,8 +41,8 @@ curl https://votre-app.vercel.app/api/projects-bypass
 
 1. **Allez à `/login`**
 2. **Entrez les identifiants:**
-   - Email: `admin@pf-scoring.ma`
-   - Mot de passe: `Admin123!`
+   - Email: `<admin-email>`
+   - Mot de passe: `<admin-password>`
 3. **Cliquez "Se connecter"**
 
 ## 🔐 Configurer OAuth (Optionnel)
@@ -124,7 +124,7 @@ curl http://localhost:3000/api/auth/users \
 
 | Email                  | Mot de passe | Rôle     |
 | ---------------------- | ------------ | -------- |
-| admin@pf-scoring.ma    | Admin123!    | Admin    |
+| <admin-email>    | <admin-password>    | Admin    |
 | analyste@pf-scoring.ma | Analyste123! | Analyste |
 
 ## 📱 Points d'accès principaux
@@ -156,7 +156,7 @@ curl http://localhost:3000/api/auth/users \
 **L'API retourne 401:**
 
 - Vous n'êtes pas connecté
-- Utilisez `/api/projects-bypass` pour tester sans auth
+- Utilisez `/api/projects` pour tester sans auth
 - Vérifiez que le token JWT est valide
 
 **OAuth ne fonctionne pas:**

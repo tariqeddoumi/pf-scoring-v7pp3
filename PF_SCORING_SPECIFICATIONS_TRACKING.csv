@@ -108,7 +108,7 @@ SÉCURITÉ,CSRF Protection,POST request validation,Supabase built-in CSRF,Middle
 
 DONNÉES INITIALES,Pays,Liste des Pays,100+ pays avec risk scores,Seed data in database/seeds,EN COURS,,Morocco + regional countries done,40%,2026-04-02
 DONNÉES INITIALES,Domaines,9 domaines de scoring,ScoreDomain seed data,Database seeding scripts,EN COURS,,V7++ model loaded,90%,2026-04-02
-DONNÉES INITIALES,Utilisateurs Test,Test accounts,Admin + Manager + Analyst + Viewer,init-test-user API,INTÉGRÉ,,Credentials in logs,100%,2026-04-02
+DONNÉES INITIALES,Utilisateurs Test,Test accounts,Admin + Manager + Analyst + Viewer,bootstrap disabled,INTÉGRÉ,,Credentials in logs,100%,2026-04-02
 
 DOCUMENTATION,API Docs,OpenAPI/Swagger,Documentation des endpoints,Swagger/OpenAPI spec,EN COURS,,Template ready, endpoints TBD,30%,2026-04-02
 DOCUMENTATION,Methodology Page,Explication Modèle,How scoring works + domains + rules,/methodology page,INTÉGRÉ,,Educational content,90%,2026-04-02
