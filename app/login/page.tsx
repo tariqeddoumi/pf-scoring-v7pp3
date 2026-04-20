@@ -3,9 +3,6 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const TEST_ADMIN_EMAIL = "admin@pf-scoring.ma";
-const TEST_ADMIN_PASSWORD = "Admin123!";
-
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -13,7 +10,6 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [useBypass, setUseBypass] = useState(false);
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -31,8 +27,6 @@ function LoginPageContent() {
       const normalizedEmail = email.trim().toLowerCase();
       const normalizedPassword = password.trim();
 
-      // Attempt login directly without health check blocking it
-      // The login endpoint will handle database errors properly
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,29 +41,15 @@ function LoginPageContent() {
       if (response.ok) {
         router.push("/dashboard");
       } else {
-        // Afficher le code d'erreur s'il existe pour plus de détails
         const errorMessage = data.errorCode
           ? `${data.error || "Erreur"} (${data.errorCode})`
           : data.error || "Erreur lors de la connexion";
-
-        // Special handling for server errors
-        if (response.status >= 500) {
-          setError(`⚠️ ${errorMessage}`);
-        } else {
-          const isAdminCredentialError =
-            data?.errorCode === "ERR_AUTH_001" &&
-            normalizedEmail === TEST_ADMIN_EMAIL;
-          setError(
-            isAdminCredentialError
-              ? `${errorMessage} — Astuce: compte admin de test ${TEST_ADMIN_EMAIL} / ${TEST_ADMIN_PASSWORD}`
-              : errorMessage
-          );
-        }
+        setError(response.status >= 500 ? `⚠️ ${errorMessage}` : errorMessage);
       }
-    } catch (error) {
+    } catch (requestError) {
       const errorMsg =
-        error instanceof Error
-          ? error.message
+        requestError instanceof Error
+          ? requestError.message
           : "Erreur de connexion au serveur";
       setError(`Erreur réseau: ${errorMsg}`);
     } finally {
@@ -99,56 +79,20 @@ function LoginPageContent() {
     }
   };
 
-  const handleBypassLogin = async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/projects-bypass");
-      const data = await response.json();
-
-      if (response.ok) {
-        router.push("/dashboard");
-      } else {
-        // Afficher le code d'erreur s'il existe
-        const errorMessage = data.error?.code
-          ? `${data.error.message} (${data.error.code})`
-          : data.error?.message || "Erreur lors de l'accès au tableau de bord";
-        setError(errorMessage);
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Impossible de rejoindre le serveur";
-      setError(`Erreur de connexion: ${errorMessage}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
             <div className="text-4xl">📊</div>
             <h1 className="text-3xl font-bold text-white">PF Scoring</h1>
           </div>
-          <p className="text-slate-400">
-            Application de Scoring Project Finance
-          </p>
+          <p className="text-slate-400">Application de Scoring Project Finance</p>
         </div>
 
-        {/* Card */}
         <div className="bg-slate-800 rounded-lg shadow-xl p-8 border border-slate-700">
-          <h2 className="text-2xl font-bold text-white mb-2">
-            Connexion à votre compte
-          </h2>
-          <p className="text-slate-400 mb-6">
-            Accédez à votre tableau de bord de scoring
-          </p>
+          <h2 className="text-2xl font-bold text-white mb-2">Connexion à votre compte</h2>
+          <p className="text-slate-400 mb-6">Accédez à votre tableau de bord de scoring</p>
 
           {error && (
             <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
@@ -156,7 +100,6 @@ function LoginPageContent() {
             </div>
           )}
 
-          {/* OAuth Buttons */}
           <div className="space-y-3 mb-6">
             <button
               onClick={() => handleOAuthLogin("google")}
@@ -177,7 +120,6 @@ function LoginPageContent() {
             </button>
           </div>
 
-          {/* Divider */}
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-700"></div>
@@ -187,13 +129,9 @@ function LoginPageContent() {
             </div>
           </div>
 
-          {/* Login Form */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-slate-200 mb-2"
-              >
+              <label htmlFor="email" className="block text-sm font-medium text-slate-200 mb-2">
                 Adresse e-mail
               </label>
               <input
@@ -201,17 +139,14 @@ function LoginPageContent() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@pf-scoring.ma"
+                placeholder="votre@email.com"
                 disabled={loading}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-slate-200 mb-2"
-              >
+              <label htmlFor="password" className="block text-sm font-medium text-slate-200 mb-2">
                 Mot de passe
               </label>
               <input
@@ -233,57 +168,8 @@ function LoginPageContent() {
               {loading ? "Connexion..." : "Se connecter"}
             </button>
           </form>
-
-          {/* Demo Info */}
-          <div className="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-            <p className="text-sm text-slate-300 mb-2">
-              <span className="font-medium">Compte de test :</span>
-            </p>
-            <p className="text-xs text-slate-400">
-              📧 {TEST_ADMIN_EMAIL}
-              <br />
-              🔑 {TEST_ADMIN_PASSWORD}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail(TEST_ADMIN_EMAIL);
-                setPassword(TEST_ADMIN_PASSWORD);
-                setError("");
-              }}
-              className="mt-3 text-xs text-blue-300 hover:text-blue-200 underline underline-offset-2"
-            >
-              Remplir automatiquement ces identifiants
-            </button>
-          </div>
-
-          {/* Bypass Mode */}
-          <div className="mt-6 pt-6 border-t border-slate-700">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useBypass}
-                onChange={(e) => setUseBypass(e.target.checked)}
-                className="w-4 h-4 bg-slate-700 border border-slate-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-sm text-slate-400">
-                Mode test (contourner l&apos;authentification)
-              </span>
-            </label>
-
-            {useBypass && (
-              <button
-                onClick={handleBypassLogin}
-                disabled={loading}
-                className="w-full mt-3 px-4 py-2 bg-slate-700 text-white rounded-lg font-medium hover:bg-slate-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? "Accès..." : "Accéder au tableau de bord"}
-              </button>
-            )}
-          </div>
         </div>
 
-        {/* Footer */}
         <div className="mt-8 text-center text-slate-400 text-sm">
           <p>PF Scoring • Scoring Project Finance Conforme IFC, EBRD, Basel</p>
           <p className="mt-2">Banque Marocaine • Monnaie: MAD</p>

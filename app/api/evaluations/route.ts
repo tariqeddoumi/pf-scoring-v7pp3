@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth, hasMinimumRole } from "@/lib/auth-middleware";
-import { EvaluationService } from "@/lib/services/evaluation-service";
+import { ScoringEvaluationService } from "@/lib/services/scoring-evaluation-service";
+import prisma from "@/lib/prisma-client";
 import { paginationSchema } from "@/lib/validation-schemas";
+import { EvaluationStatus } from "@prisma/client";
 
-const getErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) return error.message;
-  return "Unknown error";
-};
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : "Unknown error";
 
-/**
- * GET /api/evaluations - List all evaluations (paginated)
- */
 async function handleGET(
   request: NextRequest,
   user: { role?: string; userId?: string }
@@ -21,33 +18,51 @@ async function handleGET(
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "50", 10);
     const status = searchParams.get("status");
     const projectId = searchParams.get("projectId");
 
     const validated = paginationSchema.parse({ page, limit });
+    const skip = (validated.page - 1) * validated.limit;
 
-    const filters = {
-      ...(status && { status }),
-      ...(projectId && { projectId }),
+    const parsedStatus =
+      status && Object.values(EvaluationStatus).includes(status as EvaluationStatus)
+        ? (status as EvaluationStatus)
+        : undefined;
+
+    const where = {
+      ...(parsedStatus ? { status: parsedStatus } : {}),
+      ...(projectId ? { projectId } : {}),
     };
 
-    const result = await EvaluationService.getAllEvaluations(
-      validated.page,
-      validated.limit,
-      filters
-    );
+    const [data, total] = await Promise.all([
+      prisma.scoringEvaluation.findMany({
+        where,
+        skip,
+        take: validated.limit,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.scoringEvaluation.count({ where }),
+    ]);
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json(
+      {
+        data,
+        pagination: {
+          page: validated.page,
+          limit: validated.limit,
+          total,
+          pages: Math.ceil(total / validated.limit),
+        },
+      },
+      { status: 200 }
+    );
   } catch (error: unknown) {
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
 }
 
-/**
- * POST /api/evaluations - Create new evaluation (analyst+)
- */
 async function handlePOST(
   request: NextRequest,
   user: { role?: string; userId?: string }
@@ -57,19 +72,27 @@ async function handlePOST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const evaluation = await EvaluationService.createEvaluation(
-      body,
-      user.userId || ""
-    );
+    const body = (await request.json()) as {
+      projectId?: string;
+      modelId?: string;
+      modelVersionId?: string;
+    };
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: evaluation,
-      },
-      { status: 201 }
-    );
+    if (!body.projectId || !body.modelId || !body.modelVersionId) {
+      return NextResponse.json(
+        { error: "projectId, modelId and modelVersionId are required" },
+        { status: 400 }
+      );
+    }
+
+    const evaluation = await ScoringEvaluationService.createEvaluation({
+      projectId: body.projectId,
+      modelId: body.modelId,
+      modelVersionId: body.modelVersionId,
+      evaluatedBy: user.userId || "",
+    });
+
+    return NextResponse.json({ success: true, data: evaluation }, { status: 201 });
   } catch (error: unknown) {
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
