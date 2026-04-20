@@ -7,6 +7,11 @@ export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
   warnings: ValidationWarning[];
+  summary?: {
+    checkedNodes: number;
+    checkedRules: number;
+    checkedWeightGroups: number;
+  };
 }
 
 /**
@@ -16,7 +21,7 @@ export interface ValidationError {
   code: string;
   message: string;
   severity: "ERROR" | "CRITICAL";
-  context?: any;
+  context?: unknown;
 }
 
 /**
@@ -25,13 +30,15 @@ export interface ValidationError {
 export interface ValidationWarning {
   code: string;
   message: string;
-  context?: any;
+  context?: unknown;
 }
 
 /**
  * Validation and error handling service
  */
 export class ScoringValidationService {
+  private static readonly WEIGHT_TOLERANCE = 0.01;
+
   /**
    * Validate a scoring model version before publication
    */
@@ -64,6 +71,107 @@ export class ScoringValidationService {
         severity: "CRITICAL",
       });
       return { valid: false, errors, warnings };
+    }
+
+    const scopedRules = version.rules.filter((rule) => rule.isActive);
+    const activeNodes = version.nodes.filter((node) => node.isActive);
+    const childMap = new Map<string, typeof activeNodes>();
+    const nodeById = new Map(activeNodes.map((node) => [node.id, node]));
+
+    activeNodes.forEach((node) => {
+      if (!node.parentNodeId) return;
+      const siblings = childMap.get(node.parentNodeId) ?? [];
+      siblings.push(node);
+      childMap.set(node.parentNodeId, siblings);
+    });
+
+    // Check duplicated codes at version level
+    const codeBuckets = new Map<string, string[]>();
+    activeNodes.forEach((node) => {
+      const ids = codeBuckets.get(node.code) ?? [];
+      ids.push(node.id);
+      codeBuckets.set(node.code, ids);
+    });
+
+    codeBuckets.forEach((nodeIds, code) => {
+      if (nodeIds.length > 1) {
+        errors.push({
+          code: "DUPLICATE_NODE_CODE",
+          message: `Node code '${code}' is duplicated in version`,
+          severity: "ERROR",
+          context: { code, nodeIds },
+        });
+      }
+    });
+
+    // Check orphan nodes and cycles
+    activeNodes.forEach((node) => {
+      if (node.parentNodeId && !nodeById.has(node.parentNodeId)) {
+        errors.push({
+          code: "ORPHAN_NODE",
+          message: `Node '${node.label}' references missing parent`,
+          severity: "CRITICAL",
+          context: { nodeId: node.id, parentNodeId: node.parentNodeId },
+        });
+      }
+    });
+
+    const visited = new Set<string>();
+    const stack = new Set<string>();
+    const walk = (nodeId: string): boolean => {
+      if (stack.has(nodeId)) return true;
+      if (visited.has(nodeId)) return false;
+      visited.add(nodeId);
+      stack.add(nodeId);
+      const children = childMap.get(nodeId) ?? [];
+      for (const child of children) {
+        if (walk(child.id)) return true;
+      }
+      stack.delete(nodeId);
+      return false;
+    };
+
+    for (const node of activeNodes) {
+      if (walk(node.id)) {
+        errors.push({
+          code: "NODE_HIERARCHY_CYCLE",
+          message: "Cycle detected in scoring hierarchy",
+          severity: "CRITICAL",
+          context: { nodeId: node.id },
+        });
+        break;
+      }
+    }
+
+    // Validate weights (siblings must total 100 when at least one child has weight)
+    let checkedWeightGroups = 0;
+    childMap.forEach((siblings, parentNodeId) => {
+      const weightedSiblings = siblings.filter((s) => s.weight !== null && s.weight !== undefined);
+      if (weightedSiblings.length === 0) return;
+      checkedWeightGroups += 1;
+      const sum = weightedSiblings.reduce((acc, s) => acc + (s.weight ?? 0), 0);
+      if (Math.abs(sum - 100) > this.WEIGHT_TOLERANCE) {
+        errors.push({
+          code: "INVALID_WEIGHT_SUM",
+          message: `Children weights must total 100 for parent '${nodeById.get(parentNodeId)?.label ?? parentNodeId}'`,
+          severity: "ERROR",
+          context: { parentNodeId, sum },
+        });
+      }
+    });
+
+    const rootNodes = activeNodes.filter((node) => !node.parentNodeId);
+    if (rootNodes.length > 0 && rootNodes.some((node) => node.weight !== null && node.weight !== undefined)) {
+      checkedWeightGroups += 1;
+      const rootWeightSum = rootNodes.reduce((acc, node) => acc + (node.weight ?? 0), 0);
+      if (Math.abs(rootWeightSum - 100) > this.WEIGHT_TOLERANCE) {
+        errors.push({
+          code: "INVALID_ROOT_WEIGHT_SUM",
+          message: "Root domain weights must total 100",
+          severity: "ERROR",
+          context: { sum: rootWeightSum },
+        });
+      }
     }
 
     // Validate nodes
@@ -120,10 +228,33 @@ export class ScoringValidationService {
           context: { nodeId: node.id, nodeLabel: node.label },
         });
       }
+
+      if (node.answerType === "OPTION_SINGLE" && node.options.some((opt) => !opt.code)) {
+        warnings.push({
+          code: "OPTION_WITHOUT_CODE",
+          message: `Option list for node '${node.label}' contains values without code`,
+          context: { nodeId: node.id },
+        });
+      }
+
+      if (node.answerType === "NUMERIC_RANGE" && node.ranges.length > 1) {
+        const sorted = [...node.ranges].sort((a, b) => a.minValue - b.minValue);
+        for (let i = 1; i < sorted.length; i += 1) {
+          if (sorted[i].minValue < sorted[i - 1].maxValue) {
+            errors.push({
+              code: "OVERLAPPING_RANGES",
+              message: `Overlapping ranges found on node '${node.label}'`,
+              severity: "ERROR",
+              context: { nodeId: node.id },
+            });
+            break;
+          }
+        }
+      }
     }
 
     // Check for blocking rules
-    const blockingRules = version.rules.filter(
+    const blockingRules = scopedRules.filter(
       (r) => r.ruleType === "HARD_STOP" || r.ruleType === "NO_GO"
     );
     if (blockingRules.length > 0) {
@@ -134,10 +265,43 @@ export class ScoringValidationService {
       });
     }
 
+    // Contradictory/duplicate rule detection
+    const ruleByCode = new Map<string, typeof scopedRules>();
+    scopedRules.forEach((rule) => {
+      const existing = ruleByCode.get(rule.code) ?? [];
+      existing.push(rule);
+      ruleByCode.set(rule.code, existing);
+    });
+
+    ruleByCode.forEach((rules, code) => {
+      if (rules.length <= 1) return;
+      const actionTypes = new Set(rules.map((r) => r.actionType));
+      const conditions = new Set(rules.map((r) => r.conditionExpression));
+      if (actionTypes.size > 1 || conditions.size > 1) {
+        errors.push({
+          code: "CONTRADICTORY_RULES",
+          message: `Rule code '${code}' has contradictory definitions`,
+          severity: "ERROR",
+          context: { code, ruleIds: rules.map((r) => r.id) },
+        });
+      } else {
+        warnings.push({
+          code: "DUPLICATE_RULE_CODE",
+          message: `Rule code '${code}' is duplicated`,
+          context: { code, ruleIds: rules.map((r) => r.id) },
+        });
+      }
+    });
+
     return {
       valid: errors.length === 0,
       errors,
       warnings,
+      summary: {
+        checkedNodes: activeNodes.length,
+        checkedRules: scopedRules.length,
+        checkedWeightGroups,
+      },
     };
   }
 
@@ -225,7 +389,14 @@ export class ScoringValidationService {
    */
   static async validateAnswer(
     nodeId: string,
-    answer: any
+    answer: {
+      valueString?: string | null;
+      valueNumber?: number | null;
+      valueBoolean?: boolean | null;
+      valueDate?: Date | null;
+      manualScore?: number | null;
+      [key: string]: unknown;
+    }
   ): Promise<ValidationResult> {
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
@@ -279,23 +450,24 @@ export class ScoringValidationService {
             severity: "ERROR",
           });
         } else {
+          const numericValue = answer.valueNumber;
           const inRange = node.ranges.some(
             (r) =>
-              answer.valueNumber >= r.minValue &&
-              answer.valueNumber <= r.maxValue
+              numericValue >= r.minValue &&
+              numericValue <= r.maxValue
           );
           if (!inRange && node.ranges.length > 0) {
             warnings.push({
               code: "VALUE_OUT_OF_RANGE",
-              message: `Value ${answer.valueNumber} is outside defined ranges`,
-              context: { value: answer.valueNumber },
+              message: `Value ${numericValue} is outside defined ranges`,
+              context: { value: numericValue },
             });
           }
         }
         break;
 
       case "PERCENTAGE":
-        if (answer.valueNumber === undefined) {
+        if (answer.valueNumber === undefined || answer.valueNumber === null) {
           errors.push({
             code: "PERCENTAGE_REQUIRED",
             message: "Percentage value is required",

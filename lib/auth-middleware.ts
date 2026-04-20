@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import prisma from "@/lib/prisma-client";
 
 export interface AuthPayload {
   userId: string;
   email: string;
-  role: "admin" | "manager" | "analyst" | "viewer";
+  role:
+    | "admin"
+    | "manager"
+    | "analyst"
+    | "viewer"
+    | "ADMIN"
+    | "RISK_MANAGER"
+    | "ANALYST"
+    | "VIEWER";
   iat?: number;
   exp?: number;
 }
@@ -20,11 +27,13 @@ export async function authenticateRequest(
 ): Promise<AuthPayload | null> {
   try {
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return null;
-    }
-
-    const token = authHeader.substring(7);
+    const bearerToken =
+      authHeader && authHeader.startsWith("Bearer ")
+        ? authHeader.substring(7)
+        : null;
+    const cookieToken = request.cookies.get("auth_token")?.value || null;
+    const token = bearerToken || cookieToken;
+    if (!token) return null;
     const secret = new TextEncoder().encode(JWT_SECRET);
     const { payload } = await jwtVerify(token, secret);
     return payload as unknown as AuthPayload;
@@ -39,31 +48,7 @@ export async function withAuth(
 ): Promise<NextResponse> {
   const user = await authenticateRequest(request);
   if (!user) {
-    // Allow requests without auth with a database-backed fallback user.
-    // This avoids FK violations on entities requiring a valid userId.
-    try {
-      const fallbackUser = await prisma.user.findFirst({
-        orderBy: { createdAt: "asc" },
-        select: { id: true, email: true, role: true },
-      });
-
-      if (fallbackUser) {
-        return handler(request, {
-          userId: fallbackUser.id,
-          email: fallbackUser.email,
-          role: fallbackUser.role as AuthPayload["role"],
-        });
-      }
-    } catch (error) {
-      console.warn("[AUTH] Failed to load fallback user from DB:", error);
-    }
-
-    const mockUser: AuthPayload = {
-      userId: "550e8400-e29b-41d4-a716-446655440000",
-      email: "mock@example.com",
-      role: "admin",
-    };
-    return handler(request, mockUser);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return handler(request, user);
 }
@@ -73,7 +58,8 @@ export async function withAdminAuth(
   handler: (request: NextRequest, user: AuthPayload) => Promise<NextResponse>
 ): Promise<NextResponse> {
   return withAuth(request, async (req, user) => {
-    if (user.role !== "admin" && user.role !== "manager") {
+    const elevatedRoles = new Set(["admin", "manager", "ADMIN", "RISK_MANAGER"]);
+    if (!elevatedRoles.has(user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return handler(req, user);
