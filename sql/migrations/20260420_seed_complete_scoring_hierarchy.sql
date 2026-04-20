@@ -25,8 +25,8 @@ DECLARE
   src_version_tbl text;
   src_node_tbl text;
 
-  src_model_id text;
-  src_version_id text;
+  src_model_id uuid;
+  src_version_id uuid;
   src_version_num int;
 
   tgt_grid_version_id uuid;
@@ -44,9 +44,9 @@ BEGIN
     RAISE EXCEPTION 'Could not find runtime scoring model tables with prefix BCP_SCORE_GP or BP_PF';
   END IF;
 
-  src_model_tbl := format('%I_v7pp_scoring_models', pfx);
-  src_version_tbl := format('%I_v7pp_scoring_versions', pfx);
-  src_node_tbl := format('%I_v7pp_scoring_nodes', pfx);
+  src_model_tbl := format('%I', pfx || '_v7pp_scoring_models');
+  src_version_tbl := format('%I', pfx || '_v7pp_scoring_versions');
+  src_node_tbl := format('%I', pfx || '_v7pp_scoring_nodes');
 
   -- Resolve model PF_V7PP.
   EXECUTE format('SELECT id FROM %s WHERE code = $1 LIMIT 1', src_model_tbl)
