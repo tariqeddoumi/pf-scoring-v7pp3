@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Edit2, Shield } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Shield, Loader2 } from "lucide-react";
 
 interface User {
   id: string;
@@ -20,6 +20,15 @@ export default function AdminUsersPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
     null
   );
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newUser, setNewUser] = useState({
+    email: "",
+    prenom: "",
+    nom: "",
+    role: "analyst" as User["role"],
+  });
 
   useEffect(() => {
     fetchUsers();
@@ -40,6 +49,52 @@ export default function AdminUsersPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUser.email) {
+      setError("Email requis");
+      return;
+    }
+    try {
+      setCreating(true);
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newUser),
+      });
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.error || "Failed to create user");
+      }
+      await fetchUsers();
+      setShowCreateForm(false);
+      setNewUser({ email: "", prenom: "", nom: "", role: "analyst" });
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la création");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, role: User["role"]) => {
+    try {
+      setSavingUserId(userId);
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.error || "Failed to update user role");
+      }
+      setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, role } : user)));
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la mise à jour du rôle");
+    } finally {
+      setSavingUserId(null);
     }
   };
 
@@ -92,7 +147,54 @@ export default function AdminUsersPage() {
             </p>
           </div>
         </div>
+        <button
+          onClick={() => setShowCreateForm((prev) => !prev)}
+          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg flex items-center gap-2"
+        >
+          <Plus size={16} />
+          Nouvel utilisateur
+        </button>
       </div>
+
+      {showCreateForm && (
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+          <input
+            value={newUser.email}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, email: e.target.value }))}
+            placeholder="Email"
+            className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+          />
+          <input
+            value={newUser.prenom}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, prenom: e.target.value }))}
+            placeholder="Prénom"
+            className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+          />
+          <input
+            value={newUser.nom}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, nom: e.target.value }))}
+            placeholder="Nom"
+            className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+          />
+          <select
+            value={newUser.role}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, role: e.target.value as User["role"] }))}
+            className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+          >
+            <option value="admin">Administrateur</option>
+            <option value="manager">Gestionnaire</option>
+            <option value="analyst">Analyste</option>
+            <option value="viewer">Lecteur</option>
+          </select>
+          <button
+            onClick={handleCreateUser}
+            disabled={creating}
+            className="bg-green-600 hover:bg-green-700 disabled:bg-slate-600 text-white rounded px-4 py-2"
+          >
+            {creating ? "Création..." : "Créer"}
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 text-red-400">
@@ -154,12 +256,26 @@ export default function AdminUsersPage() {
                     <td className="px-6 py-4 text-sm">
                       <div className="flex items-center gap-2">
                         <Link
-                          href={`/admin/users/${user.id}`}
-                          className="p-2 text-blue-400 hover:bg-blue-500/20 rounded transition-colors"
-                          title="Modifier"
+                          href={`mailto:${user.email}`}
+                          className="px-2 py-1 text-xs text-blue-300 hover:bg-blue-500/20 rounded transition-colors"
+                          title="Contacter"
                         >
-                          <Edit2 size={16} />
+                          Email
                         </Link>
+                        <select
+                          value={user.role}
+                          onChange={(e) => handleRoleChange(user.id, e.target.value as User["role"])}
+                          className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-white"
+                          disabled={savingUserId === user.id}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="manager">Manager</option>
+                          <option value="analyst">Analyst</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+                        {savingUserId === user.id && (
+                          <Loader2 size={14} className="animate-spin text-slate-300" />
+                        )}
                         {showDeleteConfirm === user.id ? (
                           <div className="flex items-center gap-1">
                             <button
