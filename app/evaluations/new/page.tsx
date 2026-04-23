@@ -56,6 +56,7 @@ export default function NewEvaluationPage() {
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [loadingQuestionnaire, setLoadingQuestionnaire] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hasPublishedVersions, setHasPublishedVersions] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -80,8 +81,31 @@ export default function NewEvaluationPage() {
         const projectsData = await projectsRes.json();
         const modelsData = await modelsRes.json();
 
+        const modelsList: ScoringModel[] = modelsData.data || [];
+
         setProjects(projectsData.data || []);
-        setModels(modelsData.data || []);
+        setModels(modelsList);
+
+        if (modelsList.length === 0) {
+          setHasPublishedVersions(false);
+          return;
+        }
+
+        const versionsPayloads = await Promise.all(
+          modelsList.map(async (model) => {
+            const res = await fetch(`/api/admin/scoring/models/${model.id}/versions`);
+            if (!res.ok) return [] as ScoringVersion[];
+            const payload = await res.json();
+            return (payload.data || []) as ScoringVersion[];
+          })
+        );
+
+        const hasPublished = versionsPayloads.some((modelVersions) =>
+          modelVersions.some(
+            (version) => version.isPublished || version.status === "PUBLISHED"
+          )
+        );
+        setHasPublishedVersions(hasPublished);
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des données";
@@ -324,7 +348,7 @@ export default function NewEvaluationPage() {
               Aucun projet trouvé. Créez un projet d&apos;abord.
             </div>
           )}
-          {models.length === 0 && !error && (
+          {!hasPublishedVersions && !error && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4 text-amber-300 text-sm mb-6">
               Aucun modèle de scoring disponible. Publiez une version depuis l&apos;administration
               de scoring pour activer la saisie d&apos;évaluation.
