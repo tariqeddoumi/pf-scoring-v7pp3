@@ -105,7 +105,7 @@ export default function ScoringGridPage() {
   const [selectedRuntimeVersionId, setSelectedRuntimeVersionId] = useState('');
   const [runtimeLevelFilter, setRuntimeLevelFilter] = useState<
     'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
-  >('SUB_SUB_CRITERION');
+  >('DOMAIN');
   const [savingNodeId, setSavingNodeId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
@@ -173,6 +173,21 @@ export default function ScoringGridPage() {
 
     fetchRuntimeNodes();
   }, [selectedRuntimeModelId, selectedRuntimeVersionId]);
+
+  useEffect(() => {
+    if (runtimeNodes.length === 0) return;
+
+    const availableTypes = new Set(runtimeNodes.map((node) => node.nodeType));
+    if (availableTypes.has(runtimeLevelFilter)) return;
+
+    const fallbackOrder: Array<
+      'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
+    > = ['DOMAIN', 'CRITERION', 'SUB_CRITERION', 'SUB_SUB_CRITERION'];
+    const nextLevel = fallbackOrder.find((level) => availableTypes.has(level));
+    if (nextLevel) {
+      setRuntimeLevelFilter(nextLevel);
+    }
+  }, [runtimeNodes, runtimeLevelFilter]);
 
   const fetchCriteria = async () => {
     try {
@@ -595,11 +610,12 @@ export default function ScoringGridPage() {
                   </div>
                 </div>
               ))}
-            {runtimeNodes.filter((node) => node.nodeType === runtimeLevelFilter).length === 0 && (
+            {selectedRuntimeVersionId &&
+              runtimeNodes.filter((node) => node.nodeType === runtimeLevelFilter).length === 0 && (
               <p className="text-sm text-amber-400">
                 Aucun nœud trouvé à ce niveau pour la version sélectionnée.
               </p>
-            )}
+              )}
           </div>
         </div>
       )}
