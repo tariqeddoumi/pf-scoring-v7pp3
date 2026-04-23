@@ -324,6 +324,12 @@ export default function NewEvaluationPage() {
               Aucun projet trouvé. Créez un projet d&apos;abord.
             </div>
           )}
+          {models.length === 0 && !error && (
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4 text-amber-300 text-sm mb-6">
+              Aucun modèle de scoring disponible. Publiez une version depuis l&apos;administration
+              de scoring pour activer la saisie d&apos;évaluation.
+            </div>
+          )}
 
           <form onSubmit={handleCreateEvaluation} className="space-y-6">
             <div>
