@@ -7,10 +7,15 @@ async function handler(request: NextRequest, user: any) {
     try {
       const { searchParams } = new URL(request.url);
       const status = searchParams.get("status");
+      const isActiveParam = searchParams.get("isActive");
+      const isActive =
+        isActiveParam === null
+          ? undefined
+          : isActiveParam.toLowerCase() === "true";
 
       const models = await ScoringModelService.listModels({
         status: status as any,
-        isActive: true,
+        isActive,
       });
 
       return NextResponse.json({

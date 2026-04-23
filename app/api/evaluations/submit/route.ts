@@ -1,35 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth, hasMinimumRole } from "@/lib/auth-middleware";
-import { EvaluationService } from "@/lib/services/evaluation-service";
+import { ScoringEvaluationService } from "@/lib/services/scoring-evaluation-service";
 
-/**
- * POST /api/evaluations/submit - Submit evaluation for validation
- */
-async function handlePOST(request: NextRequest, user: any) {
+async function handlePOST(
+  request: NextRequest,
+  user: { role?: string; userId?: string }
+) {
   try {
-    if (!hasMinimumRole(user.role, "analyst")) {
+    if (!hasMinimumRole(user.role || "", "analyst")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { id, ...submitData } = body;
+    const body = (await request.json()) as { id?: string };
 
-    if (!id) {
-      return NextResponse.json(
-        { error: "Evaluation ID required" },
-        { status: 400 }
-      );
+    if (!body.id) {
+      return NextResponse.json({ error: "Evaluation ID required" }, { status: 400 });
     }
 
-    const evaluation = await EvaluationService.submitEvaluation(
-      id,
-      submitData,
-      user.userId
+    const evaluation = await ScoringEvaluationService.submitEvaluation(
+      body.id,
+      user.userId || ""
     );
 
-    return NextResponse.json(evaluation, { status: 200 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ data: evaluation }, { status: 200 });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 400 }
+    );
   }
 }
 

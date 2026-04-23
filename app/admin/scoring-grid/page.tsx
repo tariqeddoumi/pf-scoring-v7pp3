@@ -46,6 +46,31 @@ interface ScoringOption {
   orderIndex: number;
 }
 
+interface RuntimeModel {
+  id: string;
+  code: string;
+  label: string;
+}
+
+interface RuntimeVersion {
+  id: string;
+  label: string;
+  versionNumber: number;
+  isPublished: boolean;
+  status: string;
+}
+
+interface RuntimeNode {
+  id: string;
+  code: string;
+  label: string;
+  nodeType: 'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION' | string;
+  parentNodeId?: string | null;
+  weight?: number | null;
+  isActive: boolean;
+  isScored: boolean;
+}
+
 const CATEGORIES = [
   { label: 'Financial', value: 'Financial' },
   { label: 'Technical', value: 'Technical' },
@@ -73,6 +98,15 @@ export default function ScoringGridPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [runtimeModels, setRuntimeModels] = useState<RuntimeModel[]>([]);
+  const [runtimeVersions, setRuntimeVersions] = useState<RuntimeVersion[]>([]);
+  const [runtimeNodes, setRuntimeNodes] = useState<RuntimeNode[]>([]);
+  const [selectedRuntimeModelId, setSelectedRuntimeModelId] = useState('');
+  const [selectedRuntimeVersionId, setSelectedRuntimeVersionId] = useState('');
+  const [runtimeLevelFilter, setRuntimeLevelFilter] = useState<
+    'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
+  >('SUB_SUB_CRITERION');
+  const [savingNodeId, setSavingNodeId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -88,7 +122,57 @@ export default function ScoringGridPage() {
   // Fetch criteria on mount
   useEffect(() => {
     fetchCriteria();
+    fetchRuntimeModels();
   }, []);
+
+  useEffect(() => {
+    const fetchRuntimeVersions = async () => {
+      if (!selectedRuntimeModelId) {
+        setRuntimeVersions([]);
+        setSelectedRuntimeVersionId('');
+        setRuntimeNodes([]);
+        return;
+      }
+
+      const response = await fetch(
+        `/api/admin/scoring/models/${selectedRuntimeModelId}/versions`
+      );
+      if (!response.ok) {
+        setError('Impossible de charger les versions runtime');
+        return;
+      }
+      const payload = await response.json();
+      const versions: RuntimeVersion[] = payload.data || [];
+      const published = versions.filter(
+        (version) => version.isPublished || version.status === 'PUBLISHED'
+      );
+      setRuntimeVersions(published);
+      setSelectedRuntimeVersionId(published[0]?.id || '');
+    };
+
+    fetchRuntimeVersions();
+  }, [selectedRuntimeModelId]);
+
+  useEffect(() => {
+    const fetchRuntimeNodes = async () => {
+      if (!selectedRuntimeModelId || !selectedRuntimeVersionId) {
+        setRuntimeNodes([]);
+        return;
+      }
+
+      const response = await fetch(
+        `/api/admin/scoring/models/${selectedRuntimeModelId}/versions/${selectedRuntimeVersionId}/nodes`
+      );
+      if (!response.ok) {
+        setError('Impossible de charger les noeuds runtime');
+        return;
+      }
+      const payload = await response.json();
+      setRuntimeNodes(payload.data || []);
+    };
+
+    fetchRuntimeNodes();
+  }, [selectedRuntimeModelId, selectedRuntimeVersionId]);
 
   const fetchCriteria = async () => {
     try {
@@ -102,6 +186,48 @@ export default function ScoringGridPage() {
       setError(err.message || 'Failed to load criteria');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRuntimeModels = async () => {
+    try {
+      const response = await fetch('/api/admin/scoring/models');
+      if (!response.ok) throw new Error('Failed to fetch scoring models');
+      const data = await response.json();
+      const models: RuntimeModel[] = data.data || [];
+      setRuntimeModels(models);
+      if (models.length > 0) {
+        setSelectedRuntimeModelId(models[0].id);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load runtime models');
+    }
+  };
+
+  const updateNodeWeight = async (nodeId: string, weight: number) => {
+    if (!selectedRuntimeModelId || !selectedRuntimeVersionId) return;
+    try {
+      setSavingNodeId(nodeId);
+      const response = await fetch(
+        `/api/admin/scoring/models/${selectedRuntimeModelId}/versions/${selectedRuntimeVersionId}/nodes/${nodeId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ weight }),
+        }
+      );
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.error || 'Failed to update node weight');
+      }
+      setRuntimeNodes((prev) =>
+        prev.map((node) => (node.id === nodeId ? { ...node, weight } : node))
+      );
+      setSuccess('Paramétrage runtime mis à jour');
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de la mise à jour du poids');
+    } finally {
+      setSavingNodeId(null);
     }
   };
 
@@ -373,6 +499,107 @@ export default function ScoringGridPage() {
           <div className="text-center">
             <Loader2 size={32} className="animate-spin text-blue-500 mx-auto mb-4" />
             <p className="text-slate-400">Loading criteria...</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="bg-slate-800 border border-slate-700 rounded-lg p-5 space-y-4">
+          <h2 className="text-xl font-semibold text-white">
+            Paramétrage runtime (domaine / critère / sous-critère / sous-sous-critère)
+          </h2>
+          <p className="text-sm text-slate-400">
+            Cette section configure directement les nœuds runtime utilisés par l&apos;évaluation
+            et le calcul de score.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <select
+              value={selectedRuntimeModelId}
+              onChange={(e) => setSelectedRuntimeModelId(e.target.value)}
+              className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+            >
+              <option value="">-- Modèle --</option>
+              {runtimeModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label} ({model.code})
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedRuntimeVersionId}
+              onChange={(e) => setSelectedRuntimeVersionId(e.target.value)}
+              className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+              disabled={!selectedRuntimeModelId}
+            >
+              <option value="">-- Version publiée --</option>
+              {runtimeVersions.map((version) => (
+                <option key={version.id} value={version.id}>
+                  {version.label || `v${version.versionNumber}`}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={runtimeLevelFilter}
+              onChange={(e) =>
+                setRuntimeLevelFilter(
+                  e.target.value as 'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
+                )
+              }
+              className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white"
+            >
+              <option value="DOMAIN">Niveau Domaine</option>
+              <option value="CRITERION">Niveau Critère</option>
+              <option value="SUB_CRITERION">Niveau Sous-critère</option>
+              <option value="SUB_SUB_CRITERION">Niveau Sous-sous-critère</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            {runtimeNodes
+              .filter((node) => node.nodeType === runtimeLevelFilter)
+              .map((node) => (
+                <div
+                  key={node.id}
+                  className="flex flex-col md:flex-row md:items-center gap-3 bg-slate-900/50 border border-slate-700 rounded-lg p-3"
+                >
+                  <div className="flex-1">
+                    <p className="text-white font-medium">{node.label}</p>
+                    <p className="text-xs text-slate-400">
+                      {node.code} • {node.nodeType} • {node.isScored ? 'Scored' : 'Not scored'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.0001}
+                      value={node.weight ?? 0}
+                      onChange={(e) => {
+                        const nextWeight = Number.parseFloat(e.target.value || '0');
+                        setRuntimeNodes((prev) =>
+                          prev.map((n) => (n.id === node.id ? { ...n, weight: nextWeight } : n))
+                        );
+                      }}
+                      className="w-32 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+                    />
+                    <button
+                      onClick={() => updateNodeWeight(node.id, Number(node.weight ?? 0))}
+                      disabled={savingNodeId === node.id}
+                      className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 rounded text-white text-sm"
+                    >
+                      {savingNodeId === node.id ? '...' : 'Enregistrer'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            {runtimeNodes.filter((node) => node.nodeType === runtimeLevelFilter).length === 0 && (
+              <p className="text-sm text-amber-400">
+                Aucun nœud trouvé à ce niveau pour la version sélectionnée.
+              </p>
+            )}
           </div>
         </div>
       )}

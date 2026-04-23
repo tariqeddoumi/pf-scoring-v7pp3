@@ -35,29 +35,43 @@ export async function GET(request: NextRequest) {
   });
 }
 
-export async function POST(request: Request) {
-  try {
-    const { email, nom, prenom, role } = await request.json();
+export async function POST(request: NextRequest) {
+  return withAdminAuth(request, async () => {
+    try {
+      const { email, nom, prenom, role } = await request.json();
 
-    if (!email) {
-      return NextResponse.json({ error: "Email requis" }, { status: 400 });
+      if (!email) {
+        return NextResponse.json({ error: "Email requis" }, { status: 400 });
+      }
+
+      const normalizedRole = ["admin", "manager", "analyst", "viewer"].includes(role)
+        ? role
+        : "analyst";
+
+      const user = await prisma.user.create({
+        data: {
+          email,
+          nom: nom || email.split("@")[0],
+          prenom: prenom || "",
+          role: normalizedRole,
+        },
+        select: {
+          id: true,
+          email: true,
+          nom: true,
+          prenom: true,
+          role: true,
+          createdAt: true,
+        },
+      });
+
+      return NextResponse.json({ success: true, data: user }, { status: 201 });
+    } catch (error) {
+      console.error("Erreur:", error);
+      return NextResponse.json(
+        { error: "Erreur lors de la création de l'utilisateur" },
+        { status: 500 }
+      );
     }
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        nom: nom || email.split("@")[0],
-        prenom: prenom || "",
-        role: role || "analyst",
-      },
-    });
-
-    return NextResponse.json(user, { status: 201 });
-  } catch (error) {
-    console.error("Erreur:", error);
-    return NextResponse.json(
-      { error: "Erreur lors de la création de l'utilisateur" },
-      { status: 500 }
-    );
-  }
+  });
 }
