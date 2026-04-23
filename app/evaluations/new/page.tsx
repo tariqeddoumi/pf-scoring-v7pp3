@@ -91,6 +91,32 @@ export default function NewEvaluationPage() {
           return;
         }
 
+<<<<<<< codex/fix-grid-display-issues-in-settings-iqo25k
+        /**
+         * Source de vérité runtime:
+         * si le endpoint questionnaire runtime répond sans modelVersionId,
+         * alors il existe au moins une version publiée exploitable pour l'évaluation.
+         */
+        const runtimeRes = await fetch("/api/scoring/questionnaire?format=runtime");
+        if (runtimeRes.ok) {
+          setHasPublishedVersions(true);
+          return;
+        }
+
+        const runtimePayload = (await runtimeRes.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        const runtimeError = runtimePayload.error ?? "";
+
+        if (runtimeError.includes("No scoring model version found")) {
+          setHasPublishedVersions(false);
+          return;
+        }
+
+        throw new Error(
+          runtimeError || "Erreur lors de la vérification des versions publiées"
+        );
+=======
         const versionsPayloads = await Promise.all(
           modelsList.map(async (model) => {
             const res = await fetch(`/api/admin/scoring/models/${model.id}/versions`);
@@ -106,6 +132,7 @@ export default function NewEvaluationPage() {
           )
         );
         setHasPublishedVersions(hasPublished);
+>>>>>>> main
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des données";
