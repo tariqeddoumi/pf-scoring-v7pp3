@@ -91,6 +91,7 @@ export default function NewEvaluationPage() {
           return;
         }
 
+<<<<<<< codex/fix-grid-display-issues-in-settings-iqo25k
         /**
          * Source de vérité runtime:
          * si le endpoint questionnaire runtime répond sans modelVersionId,
@@ -115,6 +116,23 @@ export default function NewEvaluationPage() {
         throw new Error(
           runtimeError || "Erreur lors de la vérification des versions publiées"
         );
+=======
+        const versionsPayloads = await Promise.all(
+          modelsList.map(async (model) => {
+            const res = await fetch(`/api/admin/scoring/models/${model.id}/versions`);
+            if (!res.ok) return [] as ScoringVersion[];
+            const payload = await res.json();
+            return (payload.data || []) as ScoringVersion[];
+          })
+        );
+
+        const hasPublished = versionsPayloads.some((modelVersions) =>
+          modelVersions.some(
+            (version) => version.isPublished || version.status === "PUBLISHED"
+          )
+        );
+        setHasPublishedVersions(hasPublished);
+>>>>>>> main
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des données";
