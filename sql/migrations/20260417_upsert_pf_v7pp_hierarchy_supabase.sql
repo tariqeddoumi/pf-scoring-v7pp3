@@ -345,6 +345,11 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=model_tbl AND column_name='id' AND data_type='uuid'
+  ) INTO has_model_id_uuid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=version_tbl AND column_name='label'
   ) INTO has_version_label;
 
