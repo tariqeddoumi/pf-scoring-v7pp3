@@ -107,7 +107,11 @@ function resolveRawScore(node: RuntimeScoringNode, answer?: RuntimeAnswerPayload
 export class ScoringRuntimeService {
   static async getRuntimeModel(versionId?: string): Promise<RuntimeScoringModel> {
     const version = await prisma.scoringModelVersion.findFirst({
-      where: versionId ? { id: versionId } : { isPublished: true },
+      where: versionId
+        ? { id: versionId }
+        : {
+            OR: [{ isPublished: true }, { status: "PUBLISHED" }],
+          },
       include: {
         model: true,
         rules: {
