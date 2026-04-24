@@ -260,12 +260,16 @@ DECLARE
   has_model_name boolean;
   has_model_status boolean;
   has_model_id_uuid boolean;
+  has_model_status_enum boolean;
+  model_status_udt_name text;
 
   has_version_label boolean;
   has_version_status boolean;
   has_version_created_by boolean;
   has_version_is_published boolean;
   has_version_id_uuid boolean;
+  has_version_status_enum boolean;
+  version_status_udt_name text;
 
   has_node_depth boolean;
   has_node_is_terminal boolean;
@@ -326,6 +330,19 @@ BEGIN
     WHERE table_schema='public' AND table_name=model_tbl AND column_name='status'
   ) INTO has_model_status;
 
+  SELECT c.udt_name
+  FROM information_schema.columns c
+  WHERE c.table_schema='public' AND c.table_name=model_tbl AND c.column_name='status'
+  LIMIT 1
+  INTO model_status_udt_name;
+
+  has_model_status_enum := has_model_status AND model_status_udt_name IS NOT NULL AND model_status_udt_name <> 'text';
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=model_tbl AND column_name='id' AND data_type='uuid'
+  ) INTO has_model_id_uuid;
+
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=model_tbl AND column_name='id' AND data_type='uuid'
@@ -340,6 +357,14 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=version_tbl AND column_name='status'
   ) INTO has_version_status;
+
+  SELECT c.udt_name
+  FROM information_schema.columns c
+  WHERE c.table_schema='public' AND c.table_name=version_tbl AND c.column_name='status'
+  LIMIT 1
+  INTO version_status_udt_name;
+
+  has_version_status_enum := has_version_status AND version_status_udt_name IS NOT NULL AND version_status_udt_name <> 'text';
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -404,7 +429,11 @@ BEGIN
     CASE WHEN has_model_label THEN 'label' ELSE 'name' END,
     CASE WHEN has_model_status THEN ', status' ELSE '' END,
     CASE WHEN has_model_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
-    CASE WHEN has_model_status THEN ', $4' ELSE '' END,
+    CASE
+      WHEN has_model_status_enum THEN format(', $4::%I', model_status_udt_name)
+      WHEN has_model_status THEN ', $4'
+      ELSE ''
+    END,
     CASE WHEN has_model_label THEN 'label' ELSE 'name' END,
     CASE WHEN has_model_label THEN 'label' ELSE 'name' END
   );
@@ -442,7 +471,11 @@ BEGIN
     CASE WHEN has_version_is_published THEN ', "isPublished"' ELSE '' END,
     CASE WHEN has_version_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
     CASE WHEN has_version_label THEN ', $4' ELSE '' END,
-    CASE WHEN has_version_status THEN format(', $%s', CASE WHEN has_version_label THEN 5 ELSE 4 END) ELSE '' END,
+    CASE
+      WHEN has_version_status_enum THEN format(', $%s::%I', CASE WHEN has_version_label THEN 5 ELSE 4 END, version_status_udt_name)
+      WHEN has_version_status THEN format(', $%s', CASE WHEN has_version_label THEN 5 ELSE 4 END)
+      ELSE ''
+    END,
     CASE WHEN has_version_is_published THEN format(', $%s', CASE WHEN has_version_label AND has_version_status THEN 6 WHEN has_version_label OR has_version_status THEN 5 ELSE 4 END) ELSE '' END
   );
 
