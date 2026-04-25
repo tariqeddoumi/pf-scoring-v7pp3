@@ -56,6 +56,7 @@ export default function NewEvaluationPage() {
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [loadingQuestionnaire, setLoadingQuestionnaire] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hasPublishedVersions, setHasPublishedVersions] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -80,8 +81,40 @@ export default function NewEvaluationPage() {
         const projectsData = await projectsRes.json();
         const modelsData = await modelsRes.json();
 
+        const modelsList: ScoringModel[] = modelsData.data || [];
+
         setProjects(projectsData.data || []);
-        setModels(modelsData.data || []);
+        setModels(modelsList);
+
+        if (modelsList.length === 0) {
+          setHasPublishedVersions(false);
+          return;
+        }
+
+        /**
+         * Source de vérité runtime:
+         * si le endpoint questionnaire runtime répond sans modelVersionId,
+         * alors il existe au moins une version publiée exploitable pour l'évaluation.
+         */
+        const runtimeRes = await fetch("/api/scoring/questionnaire?format=runtime");
+        if (runtimeRes.ok) {
+          setHasPublishedVersions(true);
+          return;
+        }
+
+        const runtimePayload = (await runtimeRes.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        const runtimeError = runtimePayload.error ?? "";
+
+        if (runtimeError.includes("No scoring model version found")) {
+          setHasPublishedVersions(false);
+          return;
+        }
+
+        throw new Error(
+          runtimeError || "Erreur lors de la vérification des versions publiées"
+        );
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des données";
@@ -324,7 +357,7 @@ export default function NewEvaluationPage() {
               Aucun projet trouvé. Créez un projet d&apos;abord.
             </div>
           )}
-          {models.length === 0 && !error && (
+          {!hasPublishedVersions && !error && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4 text-amber-300 text-sm mb-6">
               Aucun modèle de scoring disponible. Publiez une version depuis l&apos;administration
               de scoring pour activer la saisie d&apos;évaluation.
