@@ -268,6 +268,7 @@ DECLARE
   has_version_created_by boolean;
   has_version_is_published boolean;
   has_version_id_uuid boolean;
+  has_version_model_id_uuid boolean;
   has_version_status_enum boolean;
   version_status_udt_name text;
 
@@ -276,6 +277,8 @@ DECLARE
   has_node_is_scored boolean;
   has_node_allows_children boolean;
   has_node_id_uuid boolean;
+  has_node_version_id_uuid boolean;
+  has_node_parent_id_uuid boolean;
 
   actor_id text;
   model_id text;
@@ -378,6 +381,11 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=version_tbl AND column_name='modelId' AND data_type='uuid'
+  ) INTO has_version_model_id_uuid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=node_tbl AND column_name='depth'
   ) INTO has_node_depth;
 
@@ -400,6 +408,16 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=node_tbl AND column_name='id' AND data_type='uuid'
   ) INTO has_node_id_uuid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=node_tbl AND column_name='versionId' AND data_type='uuid'
+  ) INTO has_node_version_id_uuid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=node_tbl AND column_name='parentNodeId' AND data_type='uuid'
+  ) INTO has_node_parent_id_uuid;
 
   -- Ensure upsert key on nodes (some legacy schemas may miss unique(versionId, code))
   EXECUTE format(
@@ -457,7 +475,7 @@ BEGIN
   -- Upsert version (adapt columns by schema)
   sql_version_insert := format(
     'INSERT INTO public.%I (id, "modelId", "versionNumber"%s%s%s%s, "updatedAt") '
-    || 'VALUES (%s, $2, $3%s%s%s%s, now()) '
+    || 'VALUES (%s, %s, $3%s%s%s%s, now()) '
     || 'ON CONFLICT ("modelId", "versionNumber") DO UPDATE SET "updatedAt" = now() '
     || 'RETURNING id',
     version_tbl,
@@ -466,6 +484,7 @@ BEGIN
     CASE WHEN has_version_is_published THEN ', "isPublished"' ELSE '' END,
     CASE WHEN has_version_created_by THEN ', "createdBy"' ELSE '' END,
     CASE WHEN has_version_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
+    CASE WHEN has_version_model_id_uuid THEN '$2::uuid' ELSE '$2' END,
     CASE WHEN has_version_label THEN ', $4' ELSE '' END,
     CASE
       WHEN has_version_status_enum THEN format(', $%s::%I', CASE WHEN has_version_label THEN 5 ELSE 4 END, version_status_udt_name)
@@ -628,7 +647,7 @@ BEGIN
   -- Template for node upsert (adapts to depth/isTerminal/isScored/allowsChildren availability)
   sql_node_insert := format(
     'INSERT INTO public.%I (id, "versionId", "parentNodeId", "nodeType", code, label, weight, "orderIndex", "updatedAt"%s%s%s%s) '
-    || 'VALUES (%s, $2, $3, $4, $5, $6, $7, $8, now()%s%s%s%s) '
+    || 'VALUES (%s, %s, %s, $4, $5, $6, $7, $8, now()%s%s%s%s) '
     || 'ON CONFLICT ("versionId", code) DO UPDATE SET '
     || '"parentNodeId" = EXCLUDED."parentNodeId", '
     || '"nodeType" = EXCLUDED."nodeType", '
@@ -643,6 +662,8 @@ BEGIN
     CASE WHEN has_node_is_scored THEN ', "isScored"' ELSE '' END,
     CASE WHEN has_node_allows_children THEN ', "allowsChildren"' ELSE '' END,
     CASE WHEN has_node_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
+    CASE WHEN has_node_version_id_uuid THEN '$2::uuid' ELSE '$2' END,
+    CASE WHEN has_node_parent_id_uuid THEN '$3::uuid' ELSE '$3' END,
     CASE WHEN has_node_depth THEN ', $9' ELSE '' END,
     CASE WHEN has_node_is_terminal THEN format(', $%s', CASE WHEN has_node_depth THEN 10 ELSE 9 END) ELSE '' END,
     CASE WHEN has_node_is_scored THEN format(', $%s', CASE WHEN has_node_depth AND has_node_is_terminal THEN 11 WHEN has_node_depth OR has_node_is_terminal THEN 10 ELSE 9 END) ELSE '' END,
