@@ -345,11 +345,6 @@ BEGIN
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name=model_tbl AND column_name='id' AND data_type='uuid'
-  ) INTO has_model_id_uuid;
-
-  SELECT EXISTS (
-    SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=version_tbl AND column_name='label'
   ) INTO has_version_label;
 
@@ -461,14 +456,15 @@ BEGIN
 
   -- Upsert version (adapt columns by schema)
   sql_version_insert := format(
-    'INSERT INTO public.%I (id, "modelId", "versionNumber"%s%s%s, "updatedAt") '
-    || 'VALUES (%s, $2, $3%s%s%s, now()) '
+    'INSERT INTO public.%I (id, "modelId", "versionNumber"%s%s%s%s, "updatedAt") '
+    || 'VALUES (%s, $2, $3%s%s%s%s, now()) '
     || 'ON CONFLICT ("modelId", "versionNumber") DO UPDATE SET "updatedAt" = now() '
     || 'RETURNING id',
     version_tbl,
     CASE WHEN has_version_label THEN ', label' ELSE '' END,
     CASE WHEN has_version_status THEN ', status' ELSE '' END,
     CASE WHEN has_version_is_published THEN ', "isPublished"' ELSE '' END,
+    CASE WHEN has_version_created_by THEN ', "createdBy"' ELSE '' END,
     CASE WHEN has_version_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
     CASE WHEN has_version_label THEN ', $4' ELSE '' END,
     CASE
@@ -476,13 +472,9 @@ BEGIN
       WHEN has_version_status THEN format(', $%s', CASE WHEN has_version_label THEN 5 ELSE 4 END)
       ELSE ''
     END,
-    CASE WHEN has_version_is_published THEN format(', $%s', CASE WHEN has_version_label AND has_version_status THEN 6 WHEN has_version_label OR has_version_status THEN 5 ELSE 4 END) ELSE '' END
-  );
-
-  IF has_version_created_by THEN
-    sql_version_insert := replace(sql_version_insert, '"updatedAt") VALUES', '"createdBy", "updatedAt") VALUES');
-    sql_version_insert := replace(sql_version_insert, 'now()) ON CONFLICT',
-      format(', $%s, now()) ON CONFLICT',
+    CASE WHEN has_version_is_published THEN format(', $%s', CASE WHEN has_version_label AND has_version_status THEN 6 WHEN has_version_label OR has_version_status THEN 5 ELSE 4 END) ELSE '' END,
+    CASE
+      WHEN has_version_created_by THEN format(', $%s',
         CASE
           WHEN has_version_label AND has_version_status AND has_version_is_published THEN 7
           WHEN (has_version_label AND has_version_status) OR (has_version_label AND has_version_is_published) OR (has_version_status AND has_version_is_published) THEN 6
@@ -490,8 +482,9 @@ BEGIN
           ELSE 4
         END
       )
-    );
-  END IF;
+      ELSE ''
+    END
+  );
 
   IF has_version_created_by THEN
     IF has_version_label AND has_version_status AND has_version_is_published THEN
