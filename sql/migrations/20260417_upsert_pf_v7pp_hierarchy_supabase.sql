@@ -259,16 +259,26 @@ DECLARE
   has_model_label boolean;
   has_model_name boolean;
   has_model_status boolean;
+  has_model_id_uuid boolean;
+  has_model_status_enum boolean;
+  model_status_udt_name text;
 
   has_version_label boolean;
   has_version_status boolean;
   has_version_created_by boolean;
   has_version_is_published boolean;
+  has_version_id_uuid boolean;
+  has_version_model_id_uuid boolean;
+  has_version_status_enum boolean;
+  version_status_udt_name text;
 
   has_node_depth boolean;
   has_node_is_terminal boolean;
   has_node_is_scored boolean;
   has_node_allows_children boolean;
+  has_node_id_uuid boolean;
+  has_node_version_id_uuid boolean;
+  has_node_parent_id_uuid boolean;
 
   actor_id text;
   model_id text;
@@ -323,6 +333,19 @@ BEGIN
     WHERE table_schema='public' AND table_name=model_tbl AND column_name='status'
   ) INTO has_model_status;
 
+  SELECT c.udt_name
+  FROM information_schema.columns c
+  WHERE c.table_schema='public' AND c.table_name=model_tbl AND c.column_name='status'
+  LIMIT 1
+  INTO model_status_udt_name;
+
+  has_model_status_enum := has_model_status AND model_status_udt_name IS NOT NULL AND model_status_udt_name <> 'text';
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=model_tbl AND column_name='id' AND data_type='uuid'
+  ) INTO has_model_id_uuid;
+
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=version_tbl AND column_name='label'
@@ -333,6 +356,14 @@ BEGIN
     WHERE table_schema='public' AND table_name=version_tbl AND column_name='status'
   ) INTO has_version_status;
 
+  SELECT c.udt_name
+  FROM information_schema.columns c
+  WHERE c.table_schema='public' AND c.table_name=version_tbl AND c.column_name='status'
+  LIMIT 1
+  INTO version_status_udt_name;
+
+  has_version_status_enum := has_version_status AND version_status_udt_name IS NOT NULL AND version_status_udt_name <> 'text';
+
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=version_tbl AND column_name='createdBy'
@@ -342,6 +373,16 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=version_tbl AND column_name='isPublished'
   ) INTO has_version_is_published;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=version_tbl AND column_name='id' AND data_type='uuid'
+  ) INTO has_version_id_uuid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=version_tbl AND column_name='modelId' AND data_type='uuid'
+  ) INTO has_version_model_id_uuid;
 
   SELECT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -363,6 +404,21 @@ BEGIN
     WHERE table_schema='public' AND table_name=node_tbl AND column_name='allowsChildren'
   ) INTO has_node_allows_children;
 
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=node_tbl AND column_name='id' AND data_type='uuid'
+  ) INTO has_node_id_uuid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=node_tbl AND column_name='versionId' AND data_type='uuid'
+  ) INTO has_node_version_id_uuid;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=node_tbl AND column_name='parentNodeId' AND data_type='uuid'
+  ) INTO has_node_parent_id_uuid;
+
   -- Ensure upsert key on nodes (some legacy schemas may miss unique(versionId, code))
   EXECUTE format(
     'CREATE UNIQUE INDEX IF NOT EXISTS %I ON public.%I ("versionId", "code")',
@@ -379,13 +435,18 @@ BEGIN
 
   -- Upsert model (adapt to label/name + optional status)
   sql_model_insert := format(
-    'INSERT INTO public.%I (id, code, %s%s, "isActive", "updatedAt") VALUES ($1, $2, $3%s, true, now()) '
+    'INSERT INTO public.%I (id, code, %s%s, "isActive", "updatedAt") VALUES (%s, $2, $3%s, true, now()) '
     || 'ON CONFLICT (code) DO UPDATE SET %s = EXCLUDED.%s, "updatedAt" = now() '
     || 'RETURNING id',
     model_tbl,
     CASE WHEN has_model_label THEN 'label' ELSE 'name' END,
     CASE WHEN has_model_status THEN ', status' ELSE '' END,
-    CASE WHEN has_model_status THEN ', $4' ELSE '' END,
+    CASE WHEN has_model_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
+    CASE
+      WHEN has_model_status_enum THEN format(', $4::%I', model_status_udt_name)
+      WHEN has_model_status THEN ', $4'
+      ELSE ''
+    END,
     CASE WHEN has_model_label THEN 'label' ELSE 'name' END,
     CASE WHEN has_model_label THEN 'label' ELSE 'name' END
   );
@@ -413,23 +474,26 @@ BEGIN
 
   -- Upsert version (adapt columns by schema)
   sql_version_insert := format(
-    'INSERT INTO public.%I (id, "modelId", "versionNumber"%s%s%s, "updatedAt") '
-    || 'VALUES ($1, $2, $3%s%s%s, now()) '
+    'INSERT INTO public.%I (id, "modelId", "versionNumber"%s%s%s%s, "updatedAt") '
+    || 'VALUES (%s, %s, $3%s%s%s%s, now()) '
     || 'ON CONFLICT ("modelId", "versionNumber") DO UPDATE SET "updatedAt" = now() '
     || 'RETURNING id',
     version_tbl,
     CASE WHEN has_version_label THEN ', label' ELSE '' END,
     CASE WHEN has_version_status THEN ', status' ELSE '' END,
     CASE WHEN has_version_is_published THEN ', "isPublished"' ELSE '' END,
+    CASE WHEN has_version_created_by THEN ', "createdBy"' ELSE '' END,
+    CASE WHEN has_version_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
+    CASE WHEN has_version_model_id_uuid THEN '$2::uuid' ELSE '$2' END,
     CASE WHEN has_version_label THEN ', $4' ELSE '' END,
-    CASE WHEN has_version_status THEN format(', $%s', CASE WHEN has_version_label THEN 5 ELSE 4 END) ELSE '' END,
-    CASE WHEN has_version_is_published THEN format(', $%s', CASE WHEN has_version_label AND has_version_status THEN 6 WHEN has_version_label OR has_version_status THEN 5 ELSE 4 END) ELSE '' END
-  );
-
-  IF has_version_created_by THEN
-    sql_version_insert := replace(sql_version_insert, '"updatedAt") VALUES', '"createdBy", "updatedAt") VALUES');
-    sql_version_insert := replace(sql_version_insert, 'now()) ON CONFLICT',
-      format(', $%s, now()) ON CONFLICT',
+    CASE
+      WHEN has_version_status_enum THEN format(', $%s::%I', CASE WHEN has_version_label THEN 5 ELSE 4 END, version_status_udt_name)
+      WHEN has_version_status THEN format(', $%s', CASE WHEN has_version_label THEN 5 ELSE 4 END)
+      ELSE ''
+    END,
+    CASE WHEN has_version_is_published THEN format(', $%s', CASE WHEN has_version_label AND has_version_status THEN 6 WHEN has_version_label OR has_version_status THEN 5 ELSE 4 END) ELSE '' END,
+    CASE
+      WHEN has_version_created_by THEN format(', $%s',
         CASE
           WHEN has_version_label AND has_version_status AND has_version_is_published THEN 7
           WHEN (has_version_label AND has_version_status) OR (has_version_label AND has_version_is_published) OR (has_version_status AND has_version_is_published) THEN 6
@@ -437,8 +501,9 @@ BEGIN
           ELSE 4
         END
       )
-    );
-  END IF;
+      ELSE ''
+    END
+  );
 
   IF has_version_created_by THEN
     IF has_version_label AND has_version_status AND has_version_is_published THEN
@@ -575,14 +640,15 @@ BEGIN
   END IF;
 
   EXECUTE format(
-    'SELECT id FROM public.%I WHERE "modelId" = $1 AND "versionNumber" = $2 LIMIT 1',
-    version_tbl
+    'SELECT id FROM public.%I WHERE "modelId" = %s AND "versionNumber" = $2 LIMIT 1',
+    version_tbl,
+    CASE WHEN has_version_model_id_uuid THEN '$1::uuid' ELSE '$1' END
   ) USING model_id, version_number INTO version_id;
 
   -- Template for node upsert (adapts to depth/isTerminal/isScored/allowsChildren availability)
   sql_node_insert := format(
     'INSERT INTO public.%I (id, "versionId", "parentNodeId", "nodeType", code, label, weight, "orderIndex", "updatedAt"%s%s%s%s) '
-    || 'VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now()%s%s%s%s) '
+    || 'VALUES (%s, %s, %s, $4, $5, $6, $7, $8, now()%s%s%s%s) '
     || 'ON CONFLICT ("versionId", code) DO UPDATE SET '
     || '"parentNodeId" = EXCLUDED."parentNodeId", '
     || '"nodeType" = EXCLUDED."nodeType", '
@@ -596,6 +662,9 @@ BEGIN
     CASE WHEN has_node_is_terminal THEN ', "isTerminal"' ELSE '' END,
     CASE WHEN has_node_is_scored THEN ', "isScored"' ELSE '' END,
     CASE WHEN has_node_allows_children THEN ', "allowsChildren"' ELSE '' END,
+    CASE WHEN has_node_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
+    CASE WHEN has_node_version_id_uuid THEN '$2::uuid' ELSE '$2' END,
+    CASE WHEN has_node_parent_id_uuid THEN '$3::uuid' ELSE '$3' END,
     CASE WHEN has_node_depth THEN ', $9' ELSE '' END,
     CASE WHEN has_node_is_terminal THEN format(', $%s', CASE WHEN has_node_depth THEN 10 ELSE 9 END) ELSE '' END,
     CASE WHEN has_node_is_scored THEN format(', $%s', CASE WHEN has_node_depth AND has_node_is_terminal THEN 11 WHEN has_node_depth OR has_node_is_terminal THEN 10 ELSE 9 END) ELSE '' END,
