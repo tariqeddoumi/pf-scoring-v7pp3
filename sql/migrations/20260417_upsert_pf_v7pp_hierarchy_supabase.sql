@@ -640,8 +640,9 @@ BEGIN
   END IF;
 
   EXECUTE format(
-    'SELECT id FROM public.%I WHERE "modelId" = $1 AND "versionNumber" = $2 LIMIT 1',
-    version_tbl
+    'SELECT id FROM public.%I WHERE "modelId" = %s AND "versionNumber" = $2 LIMIT 1',
+    version_tbl,
+    CASE WHEN has_version_model_id_uuid THEN '$1::uuid' ELSE '$1' END
   ) USING model_id, version_number INTO version_id;
 
   -- Template for node upsert (adapts to depth/isTerminal/isScored/allowsChildren availability)
