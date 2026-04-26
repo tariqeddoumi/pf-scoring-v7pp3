@@ -279,6 +279,8 @@ DECLARE
   has_node_id_uuid boolean;
   has_node_version_id_uuid boolean;
   has_node_parent_id_uuid boolean;
+  has_node_type_enum boolean;
+  node_type_udt_name text;
 
   actor_id text;
   model_id text;
@@ -418,6 +420,14 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name=node_tbl AND column_name='parentNodeId' AND data_type='uuid'
   ) INTO has_node_parent_id_uuid;
+
+  SELECT c.udt_name
+  FROM information_schema.columns c
+  WHERE c.table_schema='public' AND c.table_name=node_tbl AND c.column_name='nodeType'
+  LIMIT 1
+  INTO node_type_udt_name;
+
+  has_node_type_enum := node_type_udt_name IS NOT NULL AND node_type_udt_name <> 'text';
 
   -- Ensure upsert key on nodes (some legacy schemas may miss unique(versionId, code))
   EXECUTE format(
@@ -648,7 +658,7 @@ BEGIN
   -- Template for node upsert (adapts to depth/isTerminal/isScored/allowsChildren availability)
   sql_node_insert := format(
     'INSERT INTO public.%I (id, "versionId", "parentNodeId", "nodeType", code, label, weight, "orderIndex", "updatedAt"%s%s%s%s) '
-    || 'VALUES (%s, %s, %s, $4, $5, $6, $7, $8, now()%s%s%s%s) '
+    || 'VALUES (%s, %s, %s, %s, $5, $6, $7, $8, now()%s%s%s%s) '
     || 'ON CONFLICT ("versionId", code) DO UPDATE SET '
     || '"parentNodeId" = EXCLUDED."parentNodeId", '
     || '"nodeType" = EXCLUDED."nodeType", '
@@ -665,6 +675,7 @@ BEGIN
     CASE WHEN has_node_id_uuid THEN 'gen_random_uuid()' ELSE '$1' END,
     CASE WHEN has_node_version_id_uuid THEN '$2::uuid' ELSE '$2' END,
     CASE WHEN has_node_parent_id_uuid THEN '$3::uuid' ELSE '$3' END,
+    CASE WHEN has_node_type_enum THEN format('$4::%I', node_type_udt_name) ELSE '$4' END,
     CASE WHEN has_node_depth THEN ', $9' ELSE '' END,
     CASE WHEN has_node_is_terminal THEN format(', $%s', CASE WHEN has_node_depth THEN 10 ELSE 9 END) ELSE '' END,
     CASE WHEN has_node_is_scored THEN format(', $%s', CASE WHEN has_node_depth AND has_node_is_terminal THEN 11 WHEN has_node_depth OR has_node_is_terminal THEN 10 ELSE 9 END) ELSE '' END,
