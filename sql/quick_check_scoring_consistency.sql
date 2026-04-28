@@ -39,8 +39,25 @@ SELECT
   (SELECT count(*) FROM "BCP_SCORE_GP_scoring_options") AS legacy_options;
 
 -- 5) Industrial hierarchy footprint seeded from runtime hierarchy
+-- Safe on environments where these optional tables do not exist.
+-- Note: row_count is an estimate from pg_class.reltuples.
+WITH expected_tables AS (
+  SELECT unnest(
+    ARRAY[
+      'scoring_domains',
+      'scoring_criteria',
+      'scoring_subcriteria',
+      'scoring_subsubcriteria'
+    ]
+  ) AS table_name
+)
 SELECT
-  (SELECT count(*) FROM scoring_domains) AS industrial_domains,
-  (SELECT count(*) FROM scoring_criteria) AS industrial_criteria,
-  (SELECT count(*) FROM scoring_subcriteria) AS industrial_subcriteria,
-  (SELECT count(*) FROM scoring_subsubcriteria) AS industrial_subsubcriteria;
+  t.table_name,
+  (c.oid IS NOT NULL) AS table_exists,
+  CASE WHEN c.oid IS NOT NULL THEN GREATEST(c.reltuples::bigint, 0) END AS estimated_row_count
+FROM expected_tables t
+LEFT JOIN pg_class c
+  ON c.relname = t.table_name
+ AND c.relnamespace = 'public'::regnamespace
+ AND c.relkind = 'r'
+ORDER BY t.table_name;
