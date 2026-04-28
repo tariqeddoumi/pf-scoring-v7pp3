@@ -87,6 +87,30 @@ export function QuestionnaireForm({
     }));
   };
 
+  const collectLeafNodes = (node: QuestionnaireNode): QuestionnaireNode[] => {
+    if (!node.children || node.children.length === 0) return [node];
+    return node.children.flatMap(collectLeafNodes);
+  };
+
+  const isLeafAnswered = (node: QuestionnaireNode): boolean => {
+    const answer = answers[node.id];
+    if (!answer) return false;
+
+    if (node.options && node.options.length > 0) {
+      return Boolean(answer.valueString);
+    }
+    if (node.ranges && node.ranges.length > 0) {
+      return typeof answer.valueNumber === "number";
+    }
+    if (node.answerType === "BOOLEAN") {
+      return typeof answer.valueBoolean === "boolean";
+    }
+    if (node.answerType === "NUMERIC" || node.answerType === "NUMERIC_RANGE") {
+      return typeof answer.valueNumber === "number";
+    }
+    return Boolean(answer.valueString && answer.valueString.trim().length > 0);
+  };
+
   const getPaddingClass = (depth: number) => {
     const paddings = ["pl-0", "pl-4", "pl-8", "pl-12", "pl-16"];
     return paddings[Math.min(depth, paddings.length - 1)];
@@ -274,6 +298,14 @@ export function QuestionnaireForm({
 
   const selectedRootNode =
     nodes.find((node) => node.id === selectedRootId) || nodes[0];
+  const selectedRootIndex = nodes.findIndex((node) => node.id === selectedRootNode?.id);
+  const selectedRootLeafNodes = selectedRootNode ? collectLeafNodes(selectedRootNode) : [];
+  const selectedAnsweredCount = selectedRootLeafNodes.filter(isLeafAnswered).length;
+  const selectedTotalCount = selectedRootLeafNodes.length;
+  const selectedProgress =
+    selectedTotalCount > 0
+      ? Math.round((selectedAnsweredCount / selectedTotalCount) * 100)
+      : 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
@@ -283,24 +315,90 @@ export function QuestionnaireForm({
         </h3>
         <div className="space-y-2">
           {nodes.map((node) => (
-            <button
-              key={node.id}
-              type="button"
-              onClick={() => setSelectedRootId(node.id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                node.id === selectedRootId
-                  ? "bg-cyan-600 text-white"
-                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-              }`}
-            >
-              {node.label}
-            </button>
+            (() => {
+              const nodeLeaves = collectLeafNodes(node);
+              const answered = nodeLeaves.filter(isLeafAnswered).length;
+              const remaining = nodeLeaves.length - answered;
+
+              return (
+                <button
+                  key={node.id}
+                  type="button"
+                  onClick={() => setSelectedRootId(node.id)}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    node.id === selectedRootId
+                      ? "bg-cyan-600 text-white"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">{node.label}</span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+                        remaining === 0
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : "bg-amber-500/20 text-amber-300"
+                      }`}
+                    >
+                      {remaining} restant{remaining > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </button>
+              );
+            })()
           ))}
         </div>
       </aside>
 
       <section className="space-y-2">
+        {selectedRootNode && (
+          <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-slate-300 font-medium">
+                Progression — {selectedRootNode.label}
+              </span>
+              <span className="text-slate-400">
+                {selectedAnsweredCount}/{selectedTotalCount} ({selectedProgress}%)
+              </span>
+            </div>
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan-500 transition-all"
+                style={{ width: `${selectedProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {selectedRootNode ? renderNode(selectedRootNode) : null}
+
+        {selectedRootNode && (
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedRootId(nodes[Math.max(0, selectedRootIndex - 1)]?.id || selectedRootId)
+              }
+              disabled={selectedRootIndex <= 0}
+              className="px-4 py-2 rounded-md bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
+            >
+              ← Domaine précédent
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedRootId(
+                  nodes[Math.min(nodes.length - 1, selectedRootIndex + 1)]?.id || selectedRootId
+                )
+              }
+              disabled={selectedRootIndex >= nodes.length - 1}
+              className="px-4 py-2 rounded-md bg-cyan-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-500"
+            >
+              Domaine suivant →
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );
