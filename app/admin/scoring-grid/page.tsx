@@ -105,8 +105,11 @@ export default function ScoringGridPage() {
   const [selectedRuntimeVersionId, setSelectedRuntimeVersionId] = useState('');
   const [runtimeLevelFilter, setRuntimeLevelFilter] = useState<
     'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
-  >('SUB_SUB_CRITERION');
+  >('DOMAIN');
   const [savingNodeId, setSavingNodeId] = useState<string | null>(null);
+  const [expandedRuntimeSections, setExpandedRuntimeSections] = useState<
+    Set<'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'>
+  >(new Set(['DOMAIN']));
 
   const [formData, setFormData] = useState({
     code: '',
@@ -173,6 +176,21 @@ export default function ScoringGridPage() {
 
     fetchRuntimeNodes();
   }, [selectedRuntimeModelId, selectedRuntimeVersionId]);
+
+  useEffect(() => {
+    if (runtimeNodes.length === 0) return;
+
+    const availableTypes = new Set(runtimeNodes.map((node) => node.nodeType));
+    if (availableTypes.has(runtimeLevelFilter)) return;
+
+    const fallbackOrder: Array<
+      'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
+    > = ['DOMAIN', 'CRITERION', 'SUB_CRITERION', 'SUB_SUB_CRITERION'];
+    const nextLevel = fallbackOrder.find((level) => availableTypes.has(level));
+    if (nextLevel) {
+      setRuntimeLevelFilter(nextLevel);
+    }
+  }, [runtimeNodes, runtimeLevelFilter]);
 
   const fetchCriteria = async () => {
     try {
@@ -297,6 +315,20 @@ export default function ScoringGridPage() {
       newExpanded.add(id);
     }
     setExpandedCriteria(newExpanded);
+  };
+
+  const toggleRuntimeSection = (
+    section: 'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
+  ) => {
+    setExpandedRuntimeSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
   };
 
   return (
@@ -558,48 +590,96 @@ export default function ScoringGridPage() {
           </div>
 
           <div className="space-y-2">
-            {runtimeNodes
-              .filter((node) => node.nodeType === runtimeLevelFilter)
-              .map((node) => (
-                <div
-                  key={node.id}
-                  className="flex flex-col md:flex-row md:items-center gap-3 bg-slate-900/50 border border-slate-700 rounded-lg p-3"
-                >
-                  <div className="flex-1">
-                    <p className="text-white font-medium">{node.label}</p>
-                    <p className="text-xs text-slate-400">
-                      {node.code} • {node.nodeType} • {node.isScored ? 'Scored' : 'Not scored'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.0001}
-                      value={node.weight ?? 0}
-                      onChange={(e) => {
-                        const nextWeight = Number.parseFloat(e.target.value || '0');
-                        setRuntimeNodes((prev) =>
-                          prev.map((n) => (n.id === node.id ? { ...n, weight: nextWeight } : n))
-                        );
-                      }}
-                      className="w-32 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
-                    />
+            {(['DOMAIN', 'CRITERION', 'SUB_CRITERION', 'SUB_SUB_CRITERION'] as const).map(
+              (sectionLevel) => {
+                const sectionNodes = runtimeNodes.filter(
+                  (node) => node.nodeType === sectionLevel
+                );
+                const isExpanded = expandedRuntimeSections.has(sectionLevel);
+                const isSelectedLevel = runtimeLevelFilter === sectionLevel;
+
+                return (
+                  <div
+                    key={sectionLevel}
+                    className="border border-slate-700 rounded-lg overflow-hidden"
+                  >
                     <button
-                      onClick={() => updateNodeWeight(node.id, Number(node.weight ?? 0))}
-                      disabled={savingNodeId === node.id}
-                      className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 rounded text-white text-sm"
+                      type="button"
+                      onClick={() => {
+                        setRuntimeLevelFilter(sectionLevel);
+                        toggleRuntimeSection(sectionLevel);
+                      }}
+                      className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${
+                        isSelectedLevel ? 'bg-cyan-900/40' : 'bg-slate-900/40 hover:bg-slate-800/70'
+                      }`}
                     >
-                      {savingNodeId === node.id ? '...' : 'Enregistrer'}
+                      <div className="text-left">
+                        <p className="text-white font-medium">Niveau {sectionLevel}</p>
+                        <p className="text-xs text-slate-400">
+                          {sectionNodes.length} nœud{sectionNodes.length > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      {isExpanded ? (
+                        <ChevronUp size={18} className="text-slate-300" />
+                      ) : (
+                        <ChevronDown size={18} className="text-slate-300" />
+                      )}
                     </button>
+
+                    {isExpanded && (
+                      <div className="p-3 space-y-2 bg-slate-900/20">
+                        {sectionNodes.map((node) => (
+                          <div
+                            key={node.id}
+                            className="flex flex-col md:flex-row md:items-center gap-3 bg-slate-900/50 border border-slate-700 rounded-lg p-3"
+                          >
+                            <div className="flex-1">
+                              <p className="text-white font-medium">{node.label}</p>
+                              <p className="text-xs text-slate-400">
+                                {node.code} • {node.nodeType} • {node.isScored ? 'Scored' : 'Not scored'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.0001}
+                                value={node.weight ?? 0}
+                                onChange={(e) => {
+                                  const nextWeight = Number.parseFloat(e.target.value || '0');
+                                  setRuntimeNodes((prev) =>
+                                    prev.map((n) => (n.id === node.id ? { ...n, weight: nextWeight } : n))
+                                  );
+                                }}
+                                className="w-32 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+                              />
+                              <button
+                                onClick={() => updateNodeWeight(node.id, Number(node.weight ?? 0))}
+                                disabled={savingNodeId === node.id}
+                                className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 rounded text-white text-sm"
+                              >
+                                {savingNodeId === node.id ? '...' : 'Enregistrer'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {sectionNodes.length === 0 && (
+                          <p className="text-sm text-amber-400">
+                            Aucun nœud dans cette section.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-            {runtimeNodes.filter((node) => node.nodeType === runtimeLevelFilter).length === 0 && (
+                );
+              }
+            )}
+            {selectedRuntimeVersionId &&
+              runtimeNodes.filter((node) => node.nodeType === runtimeLevelFilter).length === 0 && (
               <p className="text-sm text-amber-400">
                 Aucun nœud trouvé à ce niveau pour la version sélectionnée.
               </p>
-            )}
+              )}
           </div>
         </div>
       )}
