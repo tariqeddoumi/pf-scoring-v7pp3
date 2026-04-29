@@ -26,10 +26,29 @@ export function QuestionnaireForm({
 }: QuestionnaireFormProps) {
   const [answers, setAnswers] = useState<AnswerState>(initialAnswers);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [selectedRootId, setSelectedRootId] = useState<string>("");
 
   useEffect(() => {
     onAnswersChange(answers);
   }, [answers, onAnswersChange]);
+
+  useEffect(() => {
+    if (nodes.length === 0) {
+      setSelectedRootId("");
+      setExpandedNodes(new Set());
+      return;
+    }
+
+    setSelectedRootId((prev) => prev || nodes[0].id);
+
+    const allNodeIds = new Set<string>();
+    const collectNodeIds = (node: QuestionnaireNode) => {
+      allNodeIds.add(node.id);
+      node.children?.forEach(collectNodeIds);
+    };
+    nodes.forEach(collectNodeIds);
+    setExpandedNodes(allNodeIds);
+  }, [nodes]);
 
   const toggleNode = (nodeId: string) => {
     const newExpanded = new Set(expandedNodes);
@@ -66,6 +85,30 @@ export function QuestionnaireForm({
         comment,
       },
     }));
+  };
+
+  const collectLeafNodes = (node: QuestionnaireNode): QuestionnaireNode[] => {
+    if (!node.children || node.children.length === 0) return [node];
+    return node.children.flatMap(collectLeafNodes);
+  };
+
+  const isLeafAnswered = (node: QuestionnaireNode): boolean => {
+    const answer = answers[node.id];
+    if (!answer) return false;
+
+    if (node.options && node.options.length > 0) {
+      return Boolean(answer.valueString);
+    }
+    if (node.ranges && node.ranges.length > 0) {
+      return typeof answer.valueNumber === "number";
+    }
+    if (node.answerType === "BOOLEAN") {
+      return typeof answer.valueBoolean === "boolean";
+    }
+    if (node.answerType === "NUMERIC" || node.answerType === "NUMERIC_RANGE") {
+      return typeof answer.valueNumber === "number";
+    }
+    return Boolean(answer.valueString && answer.valueString.trim().length > 0);
   };
 
   const getPaddingClass = (depth: number) => {
@@ -158,6 +201,74 @@ export function QuestionnaireForm({
                 </div>
               )}
 
+              {/* Generic answer input fallback by answerType */}
+              {!node.options?.length && !node.ranges?.length && (
+                <div>
+                  {node.answerType === "BOOLEAN" ? (
+                    <>
+                      <label className="block text-sm text-slate-300 mb-2">
+                        Réponse
+                      </label>
+                      <select
+                        value={
+                          typeof nodeAnswer?.valueBoolean === "boolean"
+                            ? String(nodeAnswer.valueBoolean)
+                            : ""
+                        }
+                        onChange={(e) =>
+                          updateAnswer(
+                            node.id,
+                            "valueBoolean",
+                            e.target.value === ""
+                              ? undefined
+                              : e.target.value === "true"
+                          )
+                        }
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="">-- Sélectionner --</option>
+                        <option value="true">Oui</option>
+                        <option value="false">Non</option>
+                      </select>
+                    </>
+                  ) : node.answerType === "NUMERIC" ||
+                    node.answerType === "NUMERIC_RANGE" ? (
+                    <>
+                      <label className="block text-sm text-slate-300 mb-2">
+                        Saisir une valeur
+                      </label>
+                      <input
+                        type="number"
+                        value={nodeAnswer?.valueNumber ?? ""}
+                        onChange={(e) =>
+                          updateAnswer(
+                            node.id,
+                            "valueNumber",
+                            e.target.value ? Number(e.target.value) : undefined
+                          )
+                        }
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <label className="block text-sm text-slate-300 mb-2">
+                        Réponse
+                      </label>
+                      <input
+                        type="text"
+                        value={nodeAnswer?.valueString || ""}
+                        onChange={(e) =>
+                          updateAnswer(node.id, "valueString", e.target.value)
+                        }
+                        placeholder="Saisir une réponse..."
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Comment */}
               <div>
                 <label className="block text-sm text-slate-300 mb-2">
@@ -185,9 +296,110 @@ export function QuestionnaireForm({
     );
   };
 
+  const selectedRootNode =
+    nodes.find((node) => node.id === selectedRootId) || nodes[0];
+  const selectedRootIndex = nodes.findIndex((node) => node.id === selectedRootNode?.id);
+  const selectedRootLeafNodes = selectedRootNode ? collectLeafNodes(selectedRootNode) : [];
+  const selectedAnsweredCount = selectedRootLeafNodes.filter(isLeafAnswered).length;
+  const selectedTotalCount = selectedRootLeafNodes.length;
+  const selectedProgress =
+    selectedTotalCount > 0
+      ? Math.round((selectedAnsweredCount / selectedTotalCount) * 100)
+      : 0;
+
   return (
-    <div className="space-y-2">
-      {nodes.map((node) => renderNode(node))}
+    <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
+      <aside className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 h-fit lg:sticky lg:top-4">
+        <h3 className="text-sm font-semibold text-slate-300 mb-3">
+          Domaines d&apos;évaluation
+        </h3>
+        <div className="space-y-2">
+          {nodes.map((node) => (
+            (() => {
+              const nodeLeaves = collectLeafNodes(node);
+              const answered = nodeLeaves.filter(isLeafAnswered).length;
+              const remaining = nodeLeaves.length - answered;
+
+              return (
+                <button
+                  key={node.id}
+                  type="button"
+                  onClick={() => setSelectedRootId(node.id)}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    node.id === selectedRootId
+                      ? "bg-cyan-600 text-white"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">{node.label}</span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+                        remaining === 0
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : "bg-amber-500/20 text-amber-300"
+                      }`}
+                    >
+                      {remaining} restant{remaining > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </button>
+              );
+            })()
+          ))}
+        </div>
+      </aside>
+
+      <section className="space-y-2">
+        {selectedRootNode && (
+          <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-slate-300 font-medium">
+                Progression — {selectedRootNode.label}
+              </span>
+              <span className="text-slate-400">
+                {selectedAnsweredCount}/{selectedTotalCount} ({selectedProgress}%)
+              </span>
+            </div>
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan-500 transition-all"
+                style={{ width: `${selectedProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {selectedRootNode ? renderNode(selectedRootNode) : null}
+
+        {selectedRootNode && (
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedRootId(nodes[Math.max(0, selectedRootIndex - 1)]?.id || selectedRootId)
+              }
+              disabled={selectedRootIndex <= 0}
+              className="px-4 py-2 rounded-md bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
+            >
+              ← Domaine précédent
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedRootId(
+                  nodes[Math.min(nodes.length - 1, selectedRootIndex + 1)]?.id || selectedRootId
+                )
+              }
+              disabled={selectedRootIndex >= nodes.length - 1}
+              className="px-4 py-2 rounded-md bg-cyan-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-500"
+            >
+              Domaine suivant →
+            </button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
