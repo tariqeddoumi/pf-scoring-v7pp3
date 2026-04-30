@@ -585,7 +585,7 @@ export default function ScoringGridPage() {
             </select>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {(() => {
               const childrenByParent = new Map<string, RuntimeNode[]>();
               runtimeNodes.forEach((node) => {
@@ -601,7 +601,7 @@ export default function ScoringGridPage() {
                 const isSelectedLevel = runtimeLevelFilter === node.nodeType;
 
                 return (
-                  <div key={node.id} className="border border-slate-700 rounded-lg overflow-hidden">
+                  <div key={node.id} className="border border-slate-700/80 rounded-md overflow-hidden">
                     <button
                       type="button"
                       onClick={() => {
@@ -610,26 +610,18 @@ export default function ScoringGridPage() {
                         );
                         if (children.length > 0) toggleRuntimeNode(node.id);
                       }}
-                      className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${
+                      className={`w-full px-3 py-2.5 flex items-center justify-between transition-colors ${
                         isSelectedLevel ? 'bg-cyan-900/40' : 'bg-slate-900/40 hover:bg-slate-800/70'
                       }`}
-                      style={{ paddingLeft: `${16 + depth * 18}px` }}
+                      style={{ paddingLeft: `${12 + depth * 14}px` }}
                     >
-                      <div className="text-left">
-                        <p className="text-white font-medium">{node.label}</p>
+                      <div className="text-left min-w-0">
+                        <p className="text-white font-medium text-sm truncate">{node.label}</p>
                         <p className="text-xs text-slate-400">
                           {node.code} • {node.nodeType} • {children.length} enfant{children.length > 1 ? 's' : ''}
                         </p>
                       </div>
-                      {children.length > 0 ? (
-                        isExpanded ? <ChevronUp size={18} className="text-slate-300" /> : <ChevronDown size={18} className="text-slate-300" />
-                      ) : (
-                        <span className="text-xs text-slate-400">Feuille</span>
-                      )}
-                    </button>
-
-                    <div className="p-3 bg-slate-900/20 border-t border-slate-700">
-                      <div className="flex items-center gap-2 justify-end">
+                      <div className="flex items-center gap-2 ml-2">
                         <input
                           type="number"
                           min={0}
@@ -641,20 +633,29 @@ export default function ScoringGridPage() {
                               prev.map((n) => (n.id === node.id ? { ...n, weight: nextWeight } : n))
                             );
                           }}
-                          className="w-32 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-24 bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white text-sm"
                         />
                         <button
-                          onClick={() => updateNodeWeight(node.id, Number(node.weight ?? 0))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateNodeWeight(node.id, Number(node.weight ?? 0));
+                          }}
                           disabled={savingNodeId === node.id}
-                          className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 rounded text-white text-sm"
+                          className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 rounded text-white text-xs"
                         >
                           {savingNodeId === node.id ? '...' : 'Enregistrer'}
                         </button>
+                        {children.length > 0 ? (
+                          isExpanded ? <ChevronUp size={16} className="text-slate-300" /> : <ChevronDown size={16} className="text-slate-300" />
+                        ) : (
+                          <span className="text-xs text-slate-400">Feuille</span>
+                        )}
                       </div>
-                    </div>
+                    </button>
 
                     {children.length > 0 && isExpanded && (
-                      <div className="space-y-2 p-2 bg-slate-950/30">
+                      <div className="space-y-1.5 p-1.5 bg-slate-950/30">
                         {children.map((child) => renderRuntimeNode(child, depth + 1))}
                       </div>
                     )}
