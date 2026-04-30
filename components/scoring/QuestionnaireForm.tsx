@@ -19,6 +19,14 @@ interface AnswerState {
   };
 }
 
+const DEFAULT_QUALITATIVE_OPTIONS = [
+  { value: "TRES_FAIBLE", label: "Très faible", score: 10 },
+  { value: "FAIBLE", label: "Faible", score: 35 },
+  { value: "MOYEN", label: "Moyen", score: 60 },
+  { value: "BON", label: "Bon", score: 80 },
+  { value: "EXCELLENT", label: "Excellent", score: 95 },
+];
+
 export function QuestionnaireForm({
   nodes,
   onAnswersChange,
@@ -249,6 +257,30 @@ export function QuestionnaireForm({
                         }
                         className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
                       />
+                    </>
+                  ) : node.answerType === "OPTION_SINGLE" ||
+                    node.answerType === "OPTION_MULTIPLE" ||
+                    node.answerType === "VALUE_LIST" ||
+                    node.answerType === "SELECT" ||
+                    !node.answerType ? (
+                    <>
+                      <label className="block text-sm text-slate-300 mb-2">
+                        Choisir une option
+                      </label>
+                      <select
+                        value={nodeAnswer?.valueString || ""}
+                        onChange={(e) =>
+                          updateAnswer(node.id, "valueString", e.target.value)
+                        }
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="">-- Sélectionner --</option>
+                        {DEFAULT_QUALITATIVE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label} ({opt.score} pts)
+                          </option>
+                        ))}
+                      </select>
                     </>
                   ) : (
                     <>
