@@ -105,8 +105,9 @@ export default function ScoringGridPage() {
   const [selectedRuntimeVersionId, setSelectedRuntimeVersionId] = useState('');
   const [runtimeLevelFilter, setRuntimeLevelFilter] = useState<
     'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
-  >('SUB_SUB_CRITERION');
+  >('DOMAIN');
   const [savingNodeId, setSavingNodeId] = useState<string | null>(null);
+  const [expandedRuntimeNodes, setExpandedRuntimeNodes] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState({
     code: '',
@@ -173,6 +174,21 @@ export default function ScoringGridPage() {
 
     fetchRuntimeNodes();
   }, [selectedRuntimeModelId, selectedRuntimeVersionId]);
+
+  useEffect(() => {
+    if (runtimeNodes.length === 0) return;
+
+    const availableTypes = new Set(runtimeNodes.map((node) => node.nodeType));
+    if (availableTypes.has(runtimeLevelFilter)) return;
+
+    const fallbackOrder: Array<
+      'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
+    > = ['DOMAIN', 'CRITERION', 'SUB_CRITERION', 'SUB_SUB_CRITERION'];
+    const nextLevel = fallbackOrder.find((level) => availableTypes.has(level));
+    if (nextLevel) {
+      setRuntimeLevelFilter(nextLevel);
+    }
+  }, [runtimeNodes, runtimeLevelFilter]);
 
   const fetchCriteria = async () => {
     try {
@@ -297,6 +313,18 @@ export default function ScoringGridPage() {
       newExpanded.add(id);
     }
     setExpandedCriteria(newExpanded);
+  };
+
+  const toggleRuntimeNode = (nodeId: string) => {
+    setExpandedRuntimeNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
   };
 
   return (
@@ -557,49 +585,95 @@ export default function ScoringGridPage() {
             </select>
           </div>
 
-          <div className="space-y-2">
-            {runtimeNodes
-              .filter((node) => node.nodeType === runtimeLevelFilter)
-              .map((node) => (
-                <div
-                  key={node.id}
-                  className="flex flex-col md:flex-row md:items-center gap-3 bg-slate-900/50 border border-slate-700 rounded-lg p-3"
-                >
-                  <div className="flex-1">
-                    <p className="text-white font-medium">{node.label}</p>
-                    <p className="text-xs text-slate-400">
-                      {node.code} • {node.nodeType} • {node.isScored ? 'Scored' : 'Not scored'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.0001}
-                      value={node.weight ?? 0}
-                      onChange={(e) => {
-                        const nextWeight = Number.parseFloat(e.target.value || '0');
-                        setRuntimeNodes((prev) =>
-                          prev.map((n) => (n.id === node.id ? { ...n, weight: nextWeight } : n))
-                        );
-                      }}
-                      className="w-32 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white"
-                    />
+          <div className="space-y-1.5">
+            {(() => {
+              const childrenByParent = new Map<string, RuntimeNode[]>();
+              runtimeNodes.forEach((node) => {
+                const key = node.parentNodeId || 'ROOT';
+                const list = childrenByParent.get(key) || [];
+                list.push(node);
+                childrenByParent.set(key, list);
+              });
+
+              const renderRuntimeNode = (node: RuntimeNode, depth: number = 0) => {
+                const children = childrenByParent.get(node.id) || [];
+                const isExpanded = expandedRuntimeNodes.has(node.id);
+                const isSelectedLevel = runtimeLevelFilter === node.nodeType;
+
+                return (
+                  <div key={node.id} className="border border-slate-700/80 rounded-md overflow-hidden">
                     <button
-                      onClick={() => updateNodeWeight(node.id, Number(node.weight ?? 0))}
-                      disabled={savingNodeId === node.id}
-                      className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 rounded text-white text-sm"
+                      type="button"
+                      onClick={() => {
+                        setRuntimeLevelFilter(
+                          node.nodeType as 'DOMAIN' | 'CRITERION' | 'SUB_CRITERION' | 'SUB_SUB_CRITERION'
+                        );
+                        if (children.length > 0) toggleRuntimeNode(node.id);
+                      }}
+                      className={`w-full px-3 py-2.5 flex items-center justify-between transition-colors ${
+                        isSelectedLevel ? 'bg-cyan-900/40' : 'bg-slate-900/40 hover:bg-slate-800/70'
+                      }`}
+                      style={{ paddingLeft: `${12 + depth * 14}px` }}
                     >
-                      {savingNodeId === node.id ? '...' : 'Enregistrer'}
+                      <div className="text-left min-w-0">
+                        <p className="text-white font-medium text-sm truncate">{node.label}</p>
+                        <p className="text-xs text-slate-400">
+                          {node.code} • {node.nodeType} • {children.length} enfant{children.length > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.0001}
+                          value={node.weight ?? 0}
+                          onChange={(e) => {
+                            const nextWeight = Number.parseFloat(e.target.value || '0');
+                            setRuntimeNodes((prev) =>
+                              prev.map((n) => (n.id === node.id ? { ...n, weight: nextWeight } : n))
+                            );
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-24 bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white text-sm"
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateNodeWeight(node.id, Number(node.weight ?? 0));
+                          }}
+                          disabled={savingNodeId === node.id}
+                          className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 rounded text-white text-xs"
+                        >
+                          {savingNodeId === node.id ? '...' : 'Enregistrer'}
+                        </button>
+                        {children.length > 0 ? (
+                          isExpanded ? <ChevronUp size={16} className="text-slate-300" /> : <ChevronDown size={16} className="text-slate-300" />
+                        ) : (
+                          <span className="text-xs text-slate-400">Feuille</span>
+                        )}
+                      </div>
                     </button>
+
+                    {children.length > 0 && isExpanded && (
+                      <div className="space-y-1.5 p-1.5 bg-slate-950/30">
+                        {children.map((child) => renderRuntimeNode(child, depth + 1))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-            {runtimeNodes.filter((node) => node.nodeType === runtimeLevelFilter).length === 0 && (
+                );
+              };
+
+              const rootDomains = (childrenByParent.get('ROOT') || []).filter(
+                (n) => n.nodeType === 'DOMAIN'
+              );
+              return rootDomains.map((node) => renderRuntimeNode(node));
+            })()}
+            {selectedRuntimeVersionId &&
+              runtimeNodes.filter((node) => node.nodeType === runtimeLevelFilter).length === 0 && (
               <p className="text-sm text-amber-400">
                 Aucun nœud trouvé à ce niveau pour la version sélectionnée.
               </p>
-            )}
+              )}
           </div>
         </div>
       )}

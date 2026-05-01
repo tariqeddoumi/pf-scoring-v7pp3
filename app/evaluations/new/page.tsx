@@ -56,6 +56,7 @@ export default function NewEvaluationPage() {
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [loadingQuestionnaire, setLoadingQuestionnaire] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hasPublishedVersions, setHasPublishedVersions] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -80,8 +81,40 @@ export default function NewEvaluationPage() {
         const projectsData = await projectsRes.json();
         const modelsData = await modelsRes.json();
 
+        const modelsList: ScoringModel[] = modelsData.data || [];
+
         setProjects(projectsData.data || []);
-        setModels(modelsData.data || []);
+        setModels(modelsList);
+
+        if (modelsList.length === 0) {
+          setHasPublishedVersions(false);
+          return;
+        }
+
+        /**
+         * Source de vérité runtime:
+         * si le endpoint questionnaire runtime répond sans modelVersionId,
+         * alors il existe au moins une version publiée exploitable pour l'évaluation.
+         */
+        const runtimeRes = await fetch("/api/scoring/questionnaire?format=runtime");
+        if (runtimeRes.ok) {
+          setHasPublishedVersions(true);
+          return;
+        }
+
+        const runtimePayload = (await runtimeRes.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        const runtimeError = runtimePayload.error ?? "";
+
+        if (runtimeError.includes("No scoring model version found")) {
+          setHasPublishedVersions(false);
+          return;
+        }
+
+        throw new Error(
+          runtimeError || "Erreur lors de la vérification des versions publiées"
+        );
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Erreur lors du chargement des données";
@@ -227,7 +260,8 @@ export default function NewEvaluationPage() {
       setSubmitting(true);
       setError("");
 
-      const answersArray = Object.entries(answers).map(([nodeId, value]) => {
+      const answersArray = Object.entries(answers)
+        .map(([nodeId, value]) => {
         const answerValue =
           value && typeof value === "object"
             ? (value as {
@@ -238,7 +272,7 @@ export default function NewEvaluationPage() {
               })
             : undefined;
 
-        return {
+          return {
           nodeId,
           answerType: "VALUE",
           valueString:
@@ -257,8 +291,15 @@ export default function NewEvaluationPage() {
             answerValue && typeof answerValue.comment === "string"
               ? answerValue.comment
               : undefined,
-        };
-      });
+          };
+        })
+        .filter(
+          (answer) =>
+            answer.valueString !== undefined ||
+            answer.valueNumber !== undefined ||
+            answer.valueBoolean !== undefined ||
+            answer.comment !== undefined
+        );
 
       const res = await fetch("/api/evaluations/calculate-score", {
         method: "POST",
@@ -324,7 +365,7 @@ export default function NewEvaluationPage() {
               Aucun projet trouvé. Créez un projet d&apos;abord.
             </div>
           )}
-          {models.length === 0 && !error && (
+          {!hasPublishedVersions && !error && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4 text-amber-300 text-sm mb-6">
               Aucun modèle de scoring disponible. Publiez une version depuis l&apos;administration
               de scoring pour activer la saisie d&apos;évaluation.
@@ -436,7 +477,7 @@ export default function NewEvaluationPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-4">
         <Link
           href="/evaluations"
@@ -451,7 +492,7 @@ export default function NewEvaluationPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-700 bg-slate-800 p-6">
+      <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
         {error && (
           <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4 text-red-400 text-sm mb-6">
             {error}
@@ -466,7 +507,7 @@ export default function NewEvaluationPage() {
           <>
             <QuestionnaireForm nodes={questionnaire} onAnswersChange={setAnswers} />
 
-            <div className="flex gap-3 pt-6 mt-6 border-t border-slate-700">
+            <div className="flex gap-2 pt-4 mt-4 border-t border-slate-700">
               <button
                 onClick={handleSubmitAnswers}
                 disabled={submitting}
