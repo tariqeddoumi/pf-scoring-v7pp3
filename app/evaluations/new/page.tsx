@@ -260,7 +260,8 @@ export default function NewEvaluationPage() {
       setSubmitting(true);
       setError("");
 
-      const answersArray = Object.entries(answers).map(([nodeId, value]) => {
+      const answersArray = Object.entries(answers)
+        .map(([nodeId, value]) => {
         const answerValue =
           value && typeof value === "object"
             ? (value as {
@@ -271,7 +272,7 @@ export default function NewEvaluationPage() {
               })
             : undefined;
 
-        return {
+          return {
           nodeId,
           answerType: "VALUE",
           valueString:
@@ -290,8 +291,15 @@ export default function NewEvaluationPage() {
             answerValue && typeof answerValue.comment === "string"
               ? answerValue.comment
               : undefined,
-        };
-      });
+          };
+        })
+        .filter(
+          (answer) =>
+            answer.valueString !== undefined ||
+            answer.valueNumber !== undefined ||
+            answer.valueBoolean !== undefined ||
+            answer.comment !== undefined
+        );
 
       const res = await fetch("/api/evaluations/calculate-score", {
         method: "POST",
@@ -469,7 +477,7 @@ export default function NewEvaluationPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-4">
         <Link
           href="/evaluations"
@@ -484,7 +492,7 @@ export default function NewEvaluationPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-700 bg-slate-800 p-6">
+      <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
         {error && (
           <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4 text-red-400 text-sm mb-6">
             {error}
@@ -499,7 +507,7 @@ export default function NewEvaluationPage() {
           <>
             <QuestionnaireForm nodes={questionnaire} onAnswersChange={setAnswers} />
 
-            <div className="flex gap-3 pt-6 mt-6 border-t border-slate-700">
+            <div className="flex gap-2 pt-4 mt-4 border-t border-slate-700">
               <button
                 onClick={handleSubmitAnswers}
                 disabled={submitting}

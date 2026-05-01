@@ -340,8 +340,8 @@ export function QuestionnaireForm({
       : 0;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
-      <aside className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 h-fit lg:sticky lg:top-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-3">
+      <aside className="rounded-lg border border-slate-700 bg-slate-900/40 p-2 h-fit lg:sticky lg:top-3">
         <h3 className="text-sm font-semibold text-slate-300 mb-3">
           Domaines d&apos;évaluation
         </h3>
@@ -382,9 +382,9 @@ export function QuestionnaireForm({
         </div>
       </aside>
 
-      <section className="space-y-2">
+      <section className="space-y-1">
         {selectedRootNode && (
-          <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+          <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
             <div className="flex items-center justify-between text-sm mb-2">
               <span className="text-slate-300 font-medium">
                 Progression — {selectedRootNode.label}
