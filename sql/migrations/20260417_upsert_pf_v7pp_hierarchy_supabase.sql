@@ -19,235 +19,526 @@
 DO $plpgsql$
 DECLARE
   payload jsonb := $json$
-  {
-    "model_code": "PF_V7PP",
-    "model_name": "Project Finance Scoring V7++",
-    "domains": [
-      {
-        "code": "D1",
-        "name": "Sponsor & Governance",
-        "weight": 0.15,
-        "criteria": [
-          {
-            "code": "D1_C1",
-            "name": "Sponsor Experience",
-            "weight": 0.4,
-            "subcriteria": [
-              {
-                "code": "D1_C1_SC1",
-                "name": "Track Record",
-                "weight": 0.5,
-                "subsubcriteria": [
-                  {"code": "D1_C1_SC1_SSC1", "name": "Similar Projects", "weight": 0.5},
-                  {"code": "D1_C1_SC1_SSC2", "name": "Performance", "weight": 0.5}
-                ]
-              }
-            ]
-          },
-          {
-            "code": "D1_C2",
-            "name": "Financial Strength",
-            "weight": 0.3,
-            "subcriteria": [
-              {
-                "code": "D1_C2_SC1",
-                "name": "Leverage",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D1_C2_SC1_SSC1", "name": "Debt Capacity", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D2",
-        "name": "Project Fundamentals",
-        "weight": 0.15,
-        "criteria": [
-          {
-            "code": "D2_C1",
-            "name": "Market Risk",
-            "weight": 0.4,
-            "subcriteria": [
-              {
-                "code": "D2_C1_SC1",
-                "name": "Demand",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D2_C1_SC1_SSC1", "name": "Market Growth", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D3",
-        "name": "Construction Phase",
-        "weight": 0.15,
-        "criteria": [
-          {
-            "code": "D3_C1",
-            "name": "EPC Risk",
-            "weight": 0.4,
-            "subcriteria": [
-              {
-                "code": "D3_C1_SC1",
-                "name": "Contract Type",
-                "weight": 0.4,
-                "subsubcriteria": [
-                  {"code": "D3_C1_SC1_SSC1", "name": "Lump Sum", "weight": 1}
-                ]
-              },
-              {
-                "code": "D3_C1_SC2",
-                "name": "Contractor",
-                "weight": 0.6,
-                "subsubcriteria": [
-                  {"code": "D3_C1_SC2_SSC1", "name": "Experience", "weight": 0.5},
-                  {"code": "D3_C1_SC2_SSC2", "name": "Financial Strength", "weight": 0.5}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D4",
-        "name": "Operation Phase",
-        "weight": 0.10,
-        "criteria": [
-          {
-            "code": "D4_C1",
-            "name": "O&M Risk",
-            "weight": 1,
-            "subcriteria": [
-              {
-                "code": "D4_C1_SC1",
-                "name": "Operator",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D4_C1_SC1_SSC1", "name": "Experience", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D5",
-        "name": "Financial Structure",
-        "weight": 0.15,
-        "criteria": [
-          {
-            "code": "D5_C1",
-            "name": "DSCR",
-            "weight": 0.4,
-            "subcriteria": [
-              {
-                "code": "D5_C1_SC1",
-                "name": "Coverage",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D5_C1_SC1_SSC1", "name": "DSCR Level", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D6",
-        "name": "Revenue & Contracts",
-        "weight": 0.10,
-        "criteria": [
-          {
-            "code": "D6_C1",
-            "name": "Offtake",
-            "weight": 1,
-            "subcriteria": [
-              {
-                "code": "D6_C1_SC1",
-                "name": "Contract",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D6_C1_SC1_SSC1", "name": "Duration", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D7",
-        "name": "Risk Allocation",
-        "weight": 0.10,
-        "criteria": [
-          {
-            "code": "D7_C1",
-            "name": "Allocation",
-            "weight": 1,
-            "subcriteria": [
-              {
-                "code": "D7_C1_SC1",
-                "name": "Contracts",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D7_C1_SC1_SSC1", "name": "Clarity", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D8",
-        "name": "Legal",
-        "weight": 0.05,
-        "criteria": [
-          {
-            "code": "D8_C1",
-            "name": "Documentation",
-            "weight": 1,
-            "subcriteria": [
-              {
-                "code": "D8_C1_SC1",
-                "name": "Completeness",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D8_C1_SC1_SSC1", "name": "Quality", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "code": "D9",
-        "name": "ESG",
-        "weight": 0.05,
-        "criteria": [
-          {
-            "code": "D9_C1",
-            "name": "ESG Risk",
-            "weight": 1,
-            "subcriteria": [
-              {
-                "code": "D9_C1_SC1",
-                "name": "Environmental",
-                "weight": 1,
-                "subsubcriteria": [
-                  {"code": "D9_C1_SC1_SSC1", "name": "Impact", "weight": 1}
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
+ {
+  "model_code": "PF_V7PP",
+  "model_name": "Project Finance Scoring V7++",
+  "domains": [
+    {
+      "code": "D1",
+      "name": "Sponsor & Governance",
+      "weight": 0.15,
+      "criteria": [
+        {
+          "code": "D1_C1",
+          "name": "Sponsor Experience",
+          "weight": 0.35,
+          "subcriteria": [
+            {
+              "code": "D1_C1_SC1",
+              "name": "Track Record",
+              "weight": 0.4,
+              "subsubcriteria": [
+                {"code": "D1_C1_SC1_SSC1", "name": "Similar Projects", "weight": 0.5},
+                {"code": "D1_C1_SC1_SSC2", "name": "Performance", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D1_C1_SC2",
+              "name": "Execution Capability",
+              "weight": 0.3,
+              "subsubcriteria": [
+                {"code": "D1_C1_SC2_SSC1", "name": "Construction Delivery", "weight": 0.5},
+                {"code": "D1_C1_SC2_SSC2", "name": "Operational Delivery", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D1_C1_SC3",
+              "name": "Sector Expertise",
+              "weight": 0.3,
+              "subsubcriteria": [
+                {"code": "D1_C1_SC3_SSC1", "name": "Technology Familiarity", "weight": 0.5},
+                {"code": "D1_C1_SC3_SSC2", "name": "Geographic Familiarity", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D1_C2",
+          "name": "Financial Strength",
+          "weight": 0.35,
+          "subcriteria": [
+            {
+              "code": "D1_C2_SC1",
+              "name": "Leverage",
+              "weight": 0.34,
+              "subsubcriteria": [
+                {"code": "D1_C2_SC1_SSC1", "name": "Debt Capacity", "weight": 0.5},
+                {"code": "D1_C2_SC1_SSC2", "name": "Balance Sheet Flexibility", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D1_C2_SC2",
+              "name": "Liquidity",
+              "weight": 0.33,
+              "subsubcriteria": [
+                {"code": "D1_C2_SC2_SSC1", "name": "Cash Position", "weight": 0.5},
+                {"code": "D1_C2_SC2_SSC2", "name": "Committed Facilities", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D1_C2_SC3",
+              "name": "Profitability",
+              "weight": 0.33,
+              "subsubcriteria": [
+                {"code": "D1_C2_SC3_SSC1", "name": "EBITDA Margin", "weight": 0.5},
+                {"code": "D1_C2_SC3_SSC2", "name": "Cash Conversion", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D1_C3",
+          "name": "Governance Quality",
+          "weight": 0.30,
+          "subcriteria": [
+            {
+              "code": "D1_C3_SC1",
+              "name": "Decision Framework",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D1_C3_SC1_SSC1", "name": "Board Effectiveness", "weight": 0.5},
+                {"code": "D1_C3_SC1_SSC2", "name": "Delegation Clarity", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D1_C3_SC2",
+              "name": "Reporting & Controls",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D1_C3_SC2_SSC1", "name": "Internal Controls", "weight": 0.5},
+                {"code": "D1_C3_SC2_SSC2", "name": "Transparency", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D2",
+      "name": "Project Fundamentals",
+      "weight": 0.13,
+      "criteria": [
+        {
+          "code": "D2_C1",
+          "name": "Market Risk",
+          "weight": 0.4,
+          "subcriteria": [
+            {
+              "code": "D2_C1_SC1",
+              "name": "Demand",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D2_C1_SC1_SSC1", "name": "Market Growth", "weight": 0.5},
+                {"code": "D2_C1_SC1_SSC2", "name": "Demand Stability", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D2_C1_SC2",
+              "name": "Competition",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D2_C1_SC2_SSC1", "name": "Entry Barriers", "weight": 0.5},
+                {"code": "D2_C1_SC2_SSC2", "name": "Substitution Risk", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D2_C2",
+          "name": "Project Economics",
+          "weight": 0.35,
+          "subcriteria": [
+            {
+              "code": "D2_C2_SC1",
+              "name": "Cost Competitiveness",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D2_C2_SC1_SSC1", "name": "Capex Efficiency", "weight": 0.5},
+                {"code": "D2_C2_SC1_SSC2", "name": "Opex Efficiency", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D2_C2_SC2",
+              "name": "Revenue Resilience",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D2_C2_SC2_SSC1", "name": "Pricing Power", "weight": 0.5},
+                {"code": "D2_C2_SC2_SSC2", "name": "Volume Visibility", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D2_C3",
+          "name": "Strategic Positioning",
+          "weight": 0.25,
+          "subcriteria": [
+            {
+              "code": "D2_C3_SC1",
+              "name": "Asset Relevance",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D2_C3_SC1_SSC1", "name": "Long-term Utility", "weight": 0.5},
+                {"code": "D2_C3_SC1_SSC2", "name": "Competitive Advantage", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D3",
+      "name": "Construction Phase",
+      "weight": 0.12,
+      "criteria": [
+        {
+          "code": "D3_C1",
+          "name": "EPC Risk",
+          "weight": 0.45,
+          "subcriteria": [
+            {
+              "code": "D3_C1_SC1",
+              "name": "Contract Type",
+              "weight": 0.4,
+              "subsubcriteria": [
+                {"code": "D3_C1_SC1_SSC1", "name": "Lump Sum", "weight": 0.5},
+                {"code": "D3_C1_SC1_SSC2", "name": "Turnkey Scope", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D3_C1_SC2",
+              "name": "Contractor",
+              "weight": 0.6,
+              "subsubcriteria": [
+                {"code": "D3_C1_SC2_SSC1", "name": "Experience", "weight": 0.5},
+                {"code": "D3_C1_SC2_SSC2", "name": "Financial Strength", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D3_C2",
+          "name": "Schedule & Budget",
+          "weight": 0.35,
+          "subcriteria": [
+            {
+              "code": "D3_C2_SC1",
+              "name": "Timeline Robustness",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D3_C2_SC1_SSC1", "name": "Critical Path Risk", "weight": 0.5},
+                {"code": "D3_C2_SC1_SSC2", "name": "Contingency Time", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D3_C2_SC2",
+              "name": "Cost Control",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D3_C2_SC2_SSC1", "name": "Cost Overrun Exposure", "weight": 0.5},
+                {"code": "D3_C2_SC2_SSC2", "name": "Contingency Budget", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D3_C3",
+          "name": "Interface Risk",
+          "weight": 0.20,
+          "subcriteria": [
+            {
+              "code": "D3_C3_SC1",
+              "name": "Multi-Contract Coordination",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D3_C3_SC1_SSC1", "name": "Responsibility Split", "weight": 0.5},
+                {"code": "D3_C3_SC1_SSC2", "name": "Claims Exposure", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D4",
+      "name": "Operation Phase",
+      "weight": 0.10,
+      "criteria": [
+        {
+          "code": "D4_C1",
+          "name": "O&M Risk",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D4_C1_SC1",
+              "name": "Operator",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D4_C1_SC1_SSC1", "name": "Experience", "weight": 0.5},
+                {"code": "D4_C1_SC1_SSC2", "name": "KPI Track Record", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D4_C1_SC2",
+              "name": "Performance Regime",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D4_C1_SC2_SSC1", "name": "Incentive Alignment", "weight": 0.5},
+                {"code": "D4_C1_SC2_SSC2", "name": "Penalty Effectiveness", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D4_C2",
+          "name": "Availability Risk",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D4_C2_SC1",
+              "name": "Technical Reliability",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D4_C2_SC1_SSC1", "name": "Failure Frequency", "weight": 0.5},
+                {"code": "D4_C2_SC1_SSC2", "name": "Recovery Time", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D5",
+      "name": "Financial Structure",
+      "weight": 0.15,
+      "criteria": [
+        {
+          "code": "D5_C1",
+          "name": "DSCR",
+          "weight": 0.34,
+          "subcriteria": [
+            {
+              "code": "D5_C1_SC1",
+              "name": "Coverage",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D5_C1_SC1_SSC1", "name": "DSCR Level", "weight": 0.5},
+                {"code": "D5_C1_SC1_SSC2", "name": "DSCR Volatility", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D5_C2",
+          "name": "LLCR",
+          "weight": 0.33,
+          "subcriteria": [
+            {
+              "code": "D5_C2_SC1",
+              "name": "Long-term Coverage",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D5_C2_SC1_SSC1", "name": "LLCR Level", "weight": 0.5},
+                {"code": "D5_C2_SC1_SSC2", "name": "Tail Buffer", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D5_C3",
+          "name": "Leverage Profile",
+          "weight": 0.33,
+          "subcriteria": [
+            {
+              "code": "D5_C3_SC1",
+              "name": "Debt Sizing",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D5_C3_SC1_SSC1", "name": "Debt/Equity Balance", "weight": 0.5},
+                {"code": "D5_C3_SC1_SSC2", "name": "Refinancing Dependence", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D6",
+      "name": "Revenue & Contracts",
+      "weight": 0.10,
+      "criteria": [
+        {
+          "code": "D6_C1",
+          "name": "Offtake",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D6_C1_SC1",
+              "name": "Contract",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D6_C1_SC1_SSC1", "name": "Duration", "weight": 0.5},
+                {"code": "D6_C1_SC1_SSC2", "name": "Price Formula", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D6_C2",
+          "name": "Counterparty Quality",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D6_C2_SC1",
+              "name": "Creditworthiness",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D6_C2_SC1_SSC1", "name": "Rating Strength", "weight": 0.5},
+                {"code": "D6_C2_SC1_SSC2", "name": "Default History", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D7",
+      "name": "Risk Allocation",
+      "weight": 0.10,
+      "criteria": [
+        {
+          "code": "D7_C1",
+          "name": "Allocation",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D7_C1_SC1",
+              "name": "Contracts",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D7_C1_SC1_SSC1", "name": "Clarity", "weight": 0.5},
+                {"code": "D7_C1_SC1_SSC2", "name": "Bankability", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D7_C2",
+          "name": "Residual Risks",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D7_C2_SC1",
+              "name": "Unallocated Exposure",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D7_C2_SC1_SSC1", "name": "Force Majeure Allocation", "weight": 0.5},
+                {"code": "D7_C2_SC1_SSC2", "name": "Change-in-Law Allocation", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D8",
+      "name": "Legal",
+      "weight": 0.08,
+      "criteria": [
+        {
+          "code": "D8_C1",
+          "name": "Documentation",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D8_C1_SC1",
+              "name": "Completeness",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D8_C1_SC1_SSC1", "name": "Quality", "weight": 0.5},
+                {"code": "D8_C1_SC1_SSC2", "name": "Consistency", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D8_C2",
+          "name": "Security Package",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D8_C2_SC1",
+              "name": "Enforceability",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D8_C2_SC1_SSC1", "name": "Collateral Coverage", "weight": 0.5},
+                {"code": "D8_C2_SC1_SSC2", "name": "Perfection Risk", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "D9",
+      "name": "ESG",
+      "weight": 0.07,
+      "criteria": [
+        {
+          "code": "D9_C1",
+          "name": "ESG Risk",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D9_C1_SC1",
+              "name": "Environmental",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D9_C1_SC1_SSC1", "name": "Impact", "weight": 0.5},
+                {"code": "D9_C1_SC1_SSC2", "name": "Mitigation Plan", "weight": 0.5}
+              ]
+            },
+            {
+              "code": "D9_C1_SC2",
+              "name": "Social",
+              "weight": 0.5,
+              "subsubcriteria": [
+                {"code": "D9_C1_SC2_SSC1", "name": "Community Acceptance", "weight": 0.5},
+                {"code": "D9_C1_SC2_SSC2", "name": "HSE Culture", "weight": 0.5}
+              ]
+            }
+          ]
+        },
+        {
+          "code": "D9_C2",
+          "name": "Governance ESG",
+          "weight": 0.5,
+          "subcriteria": [
+            {
+              "code": "D9_C2_SC1",
+              "name": "ESG Governance",
+              "weight": 1,
+              "subsubcriteria": [
+                {"code": "D9_C2_SC1_SSC1", "name": "Policy Maturity", "weight": 0.5},
+                {"code": "D9_C2_SC1_SSC2", "name": "Disclosure Quality", "weight": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
   $json$::jsonb;
 
   pfx text;
