@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import { resolveRouteParams, type RouteContext } from '@/lib/route-context';
 import { withAdminAuth } from "@/lib/auth-middleware";
 import prisma from "@/lib/prisma-client";
+import { assertKnownBankingRole, toPrismaRole } from "@/lib/rbac";
 
 export async function PATCH(
   request: NextRequest,
@@ -12,7 +13,7 @@ export async function PATCH(
       const { id } = await resolveRouteParams(context as any);
       const { role } = await request.json();
 
-      if (!["admin", "manager", "analyst", "viewer"].includes(role)) {
+      if (!assertKnownBankingRole(role)) {
         return NextResponse.json(
           { error: "Rôle invalide", errorCode: "VAL_001" },
           { status: 400 }
@@ -21,7 +22,7 @@ export async function PATCH(
 
       const user = await prisma.user.update({
         where: { id },
-        data: { role },
+        data: { role: toPrismaRole(role) },
         select: {
           id: true,
           email: true,

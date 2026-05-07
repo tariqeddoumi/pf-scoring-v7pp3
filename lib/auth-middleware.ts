@@ -1,26 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { getJwtSecretBytes } from "@/lib/auth-secret";
+import { hasAnyRole, hasPermission, normalizeRole, type BankingRole, type Permission } from "@/lib/rbac";
 
 export interface AuthPayload {
   userId: string;
   email: string;
-  role:
-    | "admin"
-    | "manager"
-    | "analyst"
-    | "viewer"
-    | "ADMIN"
-    | "RISK_MANAGER"
-    | "ANALYST"
-    | "VIEWER";
+  role: string;
   iat?: number;
   exp?: number;
 }
 
-const JWT_SECRET =
-  process.env.SUPABASE_JWT_SECRET ||
-  process.env.JWT_SECRET ||
-  "your-secret-key";
+const JWT_SECRET = getJwtSecretBytes();
 
 export async function authenticateRequest(
   request: NextRequest
@@ -34,8 +25,7 @@ export async function authenticateRequest(
     const cookieToken = request.cookies.get("auth_token")?.value || null;
     const token = bearerToken || cookieToken;
     if (!token) return null;
-    const secret = new TextEncoder().encode(JWT_SECRET);
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, JWT_SECRET);
     return payload as unknown as AuthPayload;
   } catch {
     return null;
@@ -53,26 +43,51 @@ export async function withAuth(
   return handler(request, user);
 }
 
-export async function withAdminAuth(
+export async function withRoleAuth(
   request: NextRequest,
+  allowedRoles: BankingRole[],
   handler: (request: NextRequest, user: AuthPayload) => Promise<NextResponse>
 ): Promise<NextResponse> {
   return withAuth(request, async (req, user) => {
-    const elevatedRoles = new Set(["admin", "manager", "ADMIN", "RISK_MANAGER"]);
-    if (!elevatedRoles.has(user.role)) {
+    if (!hasAnyRole(user.role, allowedRoles)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return handler(req, user);
   });
 }
 
-export const ROLE_HIERARCHY: Record<string, number> = {
-  admin: 4,
-  manager: 3,
-  analyst: 2,
-  viewer: 1,
+export async function withPermissionAuth(
+  request: NextRequest,
+  permission: Permission,
+  handler: (request: NextRequest, user: AuthPayload) => Promise<NextResponse>
+): Promise<NextResponse> {
+  return withAuth(request, async (req, user) => {
+    if (!hasPermission(user.role, permission)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    return handler(req, user);
+  });
+}
+
+export async function withAdminAuth(
+  request: NextRequest,
+  handler: (request: NextRequest, user: AuthPayload) => Promise<NextResponse>
+): Promise<NextResponse> {
+  return withRoleAuth(request, ["ADMIN_TECH", "ADMIN_METIER"], handler);
+}
+
+export const ROLE_HIERARCHY: Record<BankingRole, number> = {
+  ADMIN_TECH: 7,
+  ADMIN_METIER: 6,
+  RISK_MANAGER: 5,
+  VALIDATOR: 4,
+  ANALYST: 3,
+  AUDITOR: 2,
+  VIEWER: 1,
 };
 
 export function hasMinimumRole(userRole: string, minimumRole: string): boolean {
-  return (ROLE_HIERARCHY[userRole] || 0) >= (ROLE_HIERARCHY[minimumRole] || 0);
+  const normalizedUserRole = normalizeRole(userRole);
+  const normalizedMinimumRole = normalizeRole(minimumRole);
+  return ROLE_HIERARCHY[normalizedUserRole] >= ROLE_HIERARCHY[normalizedMinimumRole];
 }

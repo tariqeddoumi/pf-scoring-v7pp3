@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { withAdminAuth } from "@/lib/auth-middleware";
 import prisma from "@/lib/prisma-client";
+import { toPrismaRole } from "@/lib/rbac";
 
 export async function GET(request: NextRequest) {
   return withAdminAuth(request, async () => {
@@ -44,9 +45,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Email requis" }, { status: 400 });
       }
 
-      const normalizedRole = ["admin", "manager", "analyst", "viewer"].includes(role)
-        ? role
-        : "analyst";
+      const normalizedRole = toPrismaRole(role);
 
       const user = await prisma.user.create({
         data: {

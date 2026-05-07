@@ -137,7 +137,7 @@ export async function GET(
           email: oauthUser.email,
           nom: nomParts.join(" ") || "Utilisateur",
           prenom: prenom,
-          role: "analyst",
+          role: "ANALYST",
           password: "", // Pas de mot de passe pour OAuth
           oauthProvider: provider,
           oauthId: oauthUser.id,
