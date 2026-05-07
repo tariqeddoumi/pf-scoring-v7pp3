@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma-client";
 import { ScoringEngine } from "./scoring-engine";
+import { auditSensitiveAction } from "@/lib/services/audit-trail-service";
 
 export class ScoringEvaluationService {
   /**
@@ -30,6 +31,16 @@ export class ScoringEvaluationService {
       include: {
         answers: true,
       },
+    });
+
+    await auditSensitiveAction({
+      userId: data.evaluatedBy,
+      action: "SCORING_EVALUATION_CREATE",
+      evaluationId: evaluation.id,
+      projectId: data.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluation.id,
+      details: { modelId: data.modelId, modelVersionId: data.modelVersionId },
     });
 
     return evaluation;
@@ -110,6 +121,15 @@ export class ScoringEvaluationService {
       });
     }
 
+    await auditSensitiveAction({
+      userId: data.recordedBy,
+      action: "SCORING_EVALUATION_ANSWER_UPSERT",
+      evaluationId: data.evaluationId,
+      entityType: "ScoringEvaluationAnswer",
+      entityId: answer.id,
+      details: { nodeId: data.nodeId },
+    });
+
     return answer;
   }
 
@@ -152,6 +172,16 @@ export class ScoringEvaluationService {
       },
     });
 
+    await auditSensitiveAction({
+      userId: submittedBy,
+      action: "SCORING_EVALUATION_SUBMIT",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: { status: "soumis" },
+    });
+
     return updated;
   }
 
@@ -176,7 +206,18 @@ export class ScoringEvaluationService {
       data: {
         status: "valide",
         validatedAt: new Date(),
+        approvedAt: new Date(),
       },
+    });
+
+    await auditSensitiveAction({
+      userId: approvedBy,
+      action: "SCORING_EVALUATION_VALIDATE",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: { status: "valide" },
     });
 
     return updated;
@@ -198,17 +239,26 @@ export class ScoringEvaluationService {
       throw new Error("Evaluation not found");
     }
 
-    if (!["soumis", "valide"].includes(evaluation.status)) {
-      throw new Error("Can only reject submitted or validated evaluations");
+    if (!["soumis", "en_revue", "valide"].includes(evaluation.status)) {
+      throw new Error("Can only reject submitted, in-review or validated evaluations");
     }
 
-    // Reset to draft for corrections
     const updated = await prisma.scoringEvaluation.update({
       where: { id: evaluationId },
       data: {
-        status: "brouillon",
+        status: "rejete",
         notes: reason,
       },
+    });
+
+    await auditSensitiveAction({
+      userId: rejectedBy,
+      action: "SCORING_EVALUATION_REJECT",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: { status: "rejete", reason },
     });
 
     return updated;

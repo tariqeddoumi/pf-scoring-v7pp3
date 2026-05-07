@@ -7,6 +7,7 @@ import {
   RuntimeNodeScore,
   ScoringGranularityLevel,
 } from "@/lib/scoring-runtime-contract";
+import { evaluateSafeBooleanExpression } from "@/lib/services/safe-expression-engine";
 
 function parseNodeMetadata(metadataJson: string | null): Record<string, unknown> {
   if (!metadataJson) return {};
@@ -304,15 +305,32 @@ export class ScoringRuntimeService {
       } satisfies RuntimeNodeScore;
     });
 
-    const globalScore = domainScores.reduce((sum, domain) => sum + domain.weightedScore, 0);
+    let globalScore = domainScores.reduce((sum, domain) => sum + domain.weightedScore, 0);
     const triggeredRules: RuntimeScoreResult["triggeredRules"] = [];
+    let malusTotal = 0;
+
+    const scoresByCode = Object.fromEntries(
+      nodeScores.map((score) => [score.code, score.rawScore])
+    );
+    const scoresByNodeId = Object.fromEntries(
+      nodeScores.map((score) => [score.nodeId, score.rawScore])
+    );
+    const answersByNodeId = Object.fromEntries(
+      answers.map((answer) => [answer.nodeId, answer])
+    );
 
     for (const rule of model.rules) {
-      // Rule execution is intentionally conservative until expression engine is introduced.
-      // We only materialize rules that are configured as always-on.
-      if (rule.conditionExpression.trim().toLowerCase() !== "always") {
-        continue;
-      }
+      const scopedScore = rule.nodeId ? scoresByNodeId[rule.nodeId] : globalScore;
+      const triggered = evaluateSafeBooleanExpression(rule.conditionExpression, {
+        globalScore,
+        score: scopedScore ?? globalScore,
+        scores: scoresByCode,
+        nodeScores: scoresByNodeId,
+        answers: answersByNodeId,
+      });
+
+      if (!triggered) continue;
+
       triggeredRules.push({
         ruleId: rule.id,
         code: rule.code,
@@ -320,14 +338,31 @@ export class ScoringRuntimeService {
         actionType: rule.actionType,
         message: rule.messageUser,
       });
-      if (rule.blocking) {
+
+      if (rule.ruleType === "MALUS" || rule.actionType === "APPLY_MALUS") {
+        malusTotal += Math.abs(rule.penaltyValue ?? 0);
+      }
+
+      if (
+        rule.blocking ||
+        ["NO_GO", "HARD_STOP", "BLOCK_SUBMISSION"].includes(rule.ruleType) ||
+        ["REJECT", "BLOCK", "BLOCK_SUBMISSION"].includes(rule.actionType)
+      ) {
         alerts.push({
           code: "BLOCKING_RULE_TRIGGERED",
           message: rule.messageUser ?? `Blocking rule ${rule.code} triggered`,
           severity: "CRITICAL",
         });
+      } else if (rule.ruleType === "WARNING" || rule.actionType === "SHOW_WARNING") {
+        alerts.push({
+          code: "WARNING_RULE_TRIGGERED",
+          message: rule.messageUser ?? `Warning rule ${rule.code} triggered`,
+          severity: "WARNING",
+        });
       }
     }
+
+    globalScore = Math.max(0, Math.min(100, globalScore - malusTotal));
 
     const decision = alerts.some((alert) => alert.severity === "CRITICAL")
       ? { status: "REJECT" as const, reason: "At least one blocking rule has been triggered" }

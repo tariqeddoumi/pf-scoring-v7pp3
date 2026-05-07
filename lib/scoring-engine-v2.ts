@@ -1,199 +1,114 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma-client";
 
-const prisma = new PrismaClient();
-
-interface ComposanteScore {
+export interface ComposanteInput {
   domainCode: string;
   score: number;
-  weight: number;
+  weight?: number;
 }
 
-interface ScoringResult {
+export interface GlobalScoreResultV2 {
   scoreGlobal: number;
   grade: string;
-  composantes: ComposanteScore[];
-  details: {
-    [key: string]: {
-      score: number;
-      weight: number;
-      contribution: number;
-    };
-  };
+  composantes: ComposanteInput[];
+  details: Record<string, { score: number; weight: number; weightedScore: number }>;
 }
 
-/**
- * Calculates global score based on active domains and their weights
- */
 export async function calculateGlobalScoreV2(
-  composantes: ComposanteScore[]
-): Promise<ScoringResult> {
-  // Get active domains from database
-  const activeDomains = await prisma.scoreDomain.findMany({
-    where: { isActive: true },
+  composantes: ComposanteInput[]
+): Promise<GlobalScoreResultV2> {
+  const activeDomains = await prisma.scoringNode.findMany({
+    where: { parentNodeId: null, isActive: true },
+    select: { code: true, weight: true },
   });
+  const weightByCode = new Map(activeDomains.map((domain) => [domain.code, domain.weight ?? 0]));
 
-  // Calculate weighted average
+  let totalWeighted = 0;
   let totalWeight = 0;
-  let weightedSum = 0;
-  const details: ScoringResult["details"] = {};
+  const details: GlobalScoreResultV2["details"] = {};
 
   for (const composante of composantes) {
-    const domain = activeDomains.find((d) => d.code === composante.domainCode);
-    if (!domain || !domain.isActive) continue;
-
-    const weight = domain.weight;
-    const score = Math.max(0, Math.min(100, composante.score)); // Clamp between 0-100
-
+    const configuredWeight = weightByCode.get(composante.domainCode);
+    const weight = configuredWeight ?? composante.weight ?? 0;
+    totalWeighted += composante.score * weight;
     totalWeight += weight;
-    weightedSum += score * weight;
-
     details[composante.domainCode] = {
-      score,
+      score: composante.score,
       weight,
-      contribution: score * weight,
+      weightedScore: composante.score * weight,
     };
   }
 
-  // Normalize by total weight
-  const scoreGlobal = totalWeight > 0 ? weightedSum / totalWeight : 0;
-  const grade = determineGradeV2(scoreGlobal);
+  const scoreGlobal = totalWeight > 0 ? totalWeighted / totalWeight : 0;
 
   return {
-    scoreGlobal: Math.round(scoreGlobal * 100) / 100,
-    grade,
-    composantes: composantes.map((c) => ({
-      ...c,
-      weight: activeDomains.find((d) => d.code === c.domainCode)?.weight || 0,
-    })),
+    scoreGlobal,
+    grade: determineGradeV2(scoreGlobal),
+    composantes,
     details,
   };
 }
 
-/**
- * Determines letter grade based on score
- * Basel/IFC compliant: AAA, AA, A, BBB, BB, B, CCC, CC, C, D
- */
 export function determineGradeV2(score: number): string {
-  if (score >= 95) return "AAA";
-  if (score >= 90) return "AA";
   if (score >= 85) return "A";
-  if (score >= 80) return "BBB";
-  if (score >= 75) return "BB";
   if (score >= 70) return "B";
-  if (score >= 60) return "CCC";
-  if (score >= 50) return "CC";
-  if (score >= 40) return "C";
+  if (score >= 55) return "C";
   return "D";
 }
 
-/**
- * Applies hard stop rules - returns true if any rule prevents approval
- */
-export async function checkHardStopRules(
-  domainScores: { domainCode: string; score: number }[]
-): Promise<boolean> {
-  const criteria = await prisma.scoreCriterion.findMany({
+export async function checkHardStopRules(domainCode: string, score: number): Promise<boolean> {
+  const domain = await prisma.scoringNode.findFirst({
+    where: { code: domainCode, parentNodeId: null, isActive: true },
+    select: { id: true },
+  });
+
+  if (!domain) return false;
+
+  const noGoRule = await prisma.scoringNodeRule.findFirst({
     where: {
-      hardStopIfBelow: {
-        not: null,
-      },
+      nodeId: domain.id,
+      isActive: true,
+      ruleType: { in: ["NO_GO", "HARD_STOP", "BLOCK_SUBMISSION"] },
+      conditionExpression: { contains: "score" },
     },
   });
 
-  // Check if any criterion with hard stop has insufficient score
-  for (const criterion of criteria) {
-    const domain = await prisma.scoreDomain.findUnique({
-      where: { id: criterion.domainId },
-    });
-
-    if (!domain) continue;
-
-    const domainScore = domainScores.find(
-      (d) => d.domainCode === domain.code
-    )?.score;
-
-    if (domainScore !== undefined && criterion.hardStopIfBelow) {
-      if (domainScore < criterion.hardStopIfBelow) {
-        return true; // Hard stop triggered
-      }
-    }
-  }
-
-  return false;
+  return !!noGoRule && score <= 0;
 }
 
-/**
- * Auto-assigns country risk score based on country code
- */
-export async function getCountryRiskScore(
-  countryCode: string
-): Promise<number> {
-  const country = await prisma.country.findUnique({
-    where: { code: countryCode },
-  });
-
-  return country?.riskScore ?? 50.0; // Default to 50 if not found
+export async function getCountryRiskScore(countryCode: string): Promise<number> {
+  const country = await prisma.country.findUnique({ where: { code: countryCode } });
+  return country?.riskScore ?? 50;
 }
 
-/**
- * Converts country risk score to evaluation score (higher risk = lower score)
- */
 export function convertCountryRiskToScore(riskScore: number): number {
-  // Map: 0 risk = 100 score, 100 risk = 0 score
   return Math.max(0, Math.min(100, 100 - riskScore));
 }
 
-/**
- * Gets all available domains
- */
 export async function getAvailableDomains() {
-  return prisma.scoreDomain.findMany({
+  return prisma.scoringNode.findMany({
+    where: { parentNodeId: null },
     orderBy: { orderIndex: "asc" },
-    include: {
-      criteria: {
-        where: { isActive: true },
-        orderBy: { orderIndex: "asc" },
-        include: {
-          options: { orderBy: { orderIndex: "asc" } },
-          ranges: { orderBy: { orderIndex: "asc" } },
-        },
-      },
-    },
   });
 }
 
-/**
- * Gets active domains only
- */
 export async function getActiveDomains() {
-  return prisma.scoreDomain.findMany({
-    where: { isActive: true },
+  return prisma.scoringNode.findMany({
+    where: { parentNodeId: null, isActive: true },
     orderBy: { orderIndex: "asc" },
-    include: {
-      criteria: {
-        where: { isActive: true },
-        orderBy: { orderIndex: "asc" },
-      },
-    },
   });
 }
 
-/**
- * Checks if country risk domain is active
- */
 export async function isCountryRiskActive(): Promise<boolean> {
-  const domain = await prisma.scoreDomain.findUnique({
-    where: { code: "pays" },
+  const countryRiskNode = await prisma.scoringNode.findFirst({
+    where: { code: "pays", parentNodeId: null },
+    select: { isActive: true },
   });
-  return domain?.isActive ?? true;
+  return countryRiskNode?.isActive ?? false;
 }
 
-/**
- * Gets country risk mode from system config
- */
 export async function getCountryRiskMode(): Promise<"AUTO_ASSIGN" | "MANUAL"> {
   const config = await prisma.systemConfig.findUnique({
     where: { key: "COUNTRY_RISK_MODE" },
   });
-  return (config?.value as "AUTO_ASSIGN" | "MANUAL") ?? "AUTO_ASSIGN";
+  return config?.value === "MANUAL" ? "MANUAL" : "AUTO_ASSIGN";
 }

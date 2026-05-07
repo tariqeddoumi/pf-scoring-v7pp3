@@ -12,7 +12,7 @@ datasource db {
 }
 
 // ============================================================================
-// EXISTING MODELS (PRESERVED FOR BACKWARD COMPATIBILITY)
+// CORE MODELS
 // ============================================================================
 
 model User {
@@ -21,7 +21,7 @@ model User {
   password        String?
   nom             String
   prenom          String
-  role            UserRole @default(analyst)
+  role            UserRole @default(ANALYST)
   oauthProvider   String?
   oauthId         String?
   avatar          String?
@@ -169,7 +169,7 @@ model AuditLog {
   @@map("__TABLE_PREFIX___audit_logs")
 }
 
-// Legacy scoring tables (being migrated to new model)
+// Legacy scoring tables (isolated from active runtime; new APIs must use ScoringEvaluation)
 model ScoreDomain {
   id              String          @id @default(uuid())
   code            String          @unique
@@ -899,6 +899,14 @@ enum ProjectStatus {
 }
 
 enum UserRole {
+  ADMIN_TECH
+  ADMIN_METIER
+  RISK_MANAGER
+  ANALYST
+  VALIDATOR
+  VIEWER
+  AUDITOR
+  // Legacy values retained only for data migration compatibility; new writes must use banking roles.
   admin
   manager
   analyst
@@ -906,10 +914,13 @@ enum UserRole {
 }
 
 enum EvaluationStatus {
-  brouillon  // Draft - Initial state
-  soumis     // Submitted - Awaiting validation
-  valide     // Validated - Approved
-  rejete     // Rejected - Needs revision
+  brouillon           // Draft - Initial state
+  soumis              // Submitted - Awaiting validation
+  en_revue            // In review
+  retour_correction   // Returned for correction
+  valide              // Validated - Approved
+  rejete              // Rejected
+  archive             // Archived
 }
 
 // ============================================================================
@@ -1154,6 +1165,7 @@ enum RuleType {
   MALUS
   WARNING
   REQUIRE_REVIEW
+  BLOCK_SUBMISSION
   VISIBILITY
   MANDATORY_IF
   BLOCK_PUBLICATION
