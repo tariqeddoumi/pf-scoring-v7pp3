@@ -7,6 +7,25 @@ import {
   RuntimeNodeScore,
   ScoringGranularityLevel,
 } from "@/lib/scoring-runtime-contract";
+import { evaluateSafeBooleanExpression } from "@/lib/services/safe-expression-engine";
+
+
+const DEFAULT_QUALITATIVE_SCORES: Record<string, number> = {
+  TRES_FAIBLE: 10,
+  FAIBLE: 35,
+  MOYEN: 60,
+  BON: 80,
+  EXCELLENT: 95,
+};
+
+function applyConfiguredWeight(score: number, weight: number | null | undefined): number {
+  if (weight === null || weight === undefined || weight === 0) return score;
+  return weight <= 1 ? score * weight : (score * weight) / 100;
+}
+
+function sumWeights(weights: Array<number | null | undefined>): number {
+  return weights.reduce<number>((sum, weight) => sum + (weight ?? 0), 0);
+}
 
 function parseNodeMetadata(metadataJson: string | null): Record<string, unknown> {
   if (!metadataJson) return {};
@@ -89,17 +108,19 @@ function resolveRawScore(node: RuntimeScoringNode, answer?: RuntimeAnswerPayload
     return answer.valueNumber ?? 0;
   }
 
-  if (node.answerType === "OPTION_SINGLE") {
+  if (node.scoringMethod === "OPTION_SCORE" || node.answerType === "OPTION_SINGLE" || node.answerType === "OPTION_MULTI" || typeof answer.valueString === "string") {
     const option = node.valueList.find((item) => item.value === answer.valueString);
-    return option?.score ?? 0;
+    return option?.score ?? (answer.valueString ? DEFAULT_QUALITATIVE_SCORES[answer.valueString] ?? 0 : 0);
   }
 
-  if (node.answerType === "NUMERIC_RANGE" && typeof answer.valueNumber === "number") {
+  if ((node.scoringMethod === "RANGE_SCORE" || node.answerType === "NUMERIC_RANGE" || node.ranges.length > 0) && typeof answer.valueNumber === "number") {
     const range = node.ranges.find(
       (item) => answer.valueNumber! >= item.minValue && answer.valueNumber! <= item.maxValue
     );
     return range?.score ?? 0;
   }
+
+  if (typeof answer.valueBoolean === "boolean") return answer.valueBoolean ? 100 : 0;
 
   return answer.valueNumber ?? 0;
 }
@@ -244,7 +265,7 @@ export class ScoringRuntimeService {
       if (node.isScored || node.children.length === 0 || node.isTerminal) {
         const raw = resolveRawScore(node, answerMap.get(node.id));
         const weight = node.weight ?? 0;
-        const weighted = weight > 0 ? (raw * weight) / 100 : raw;
+        const weighted = applyConfiguredWeight(raw, weight);
         nodeScores.push({
           nodeId: node.id,
           code: node.code,
@@ -261,18 +282,19 @@ export class ScoringRuntimeService {
       const childrenRaw = node.children.map(compute);
       const childrenWeights = node.children.map((child) => child.weight ?? 0);
 
-      const totalWeight = childrenWeights.reduce((sum, value) => sum + value, 0);
-      if (totalWeight !== 100) {
+      const totalWeight = sumWeights(childrenWeights);
+      const expectedWeight = totalWeight <= 1.5 ? 1 : 100;
+      if (Math.abs(totalWeight - expectedWeight) > 0.001) {
         alerts.push({
           code: "WEIGHT_SUM_WARNING",
-          message: `Node ${node.code} has children weights sum ${totalWeight} instead of 100`,
+          message: `Node ${node.code} has children weights sum ${totalWeight} instead of ${expectedWeight}`,
           severity: "WARNING",
         });
       }
 
       const raw = aggregateScores(childrenRaw, childrenWeights, node.aggregationMethod);
       const weight = node.weight ?? 0;
-      const weighted = weight > 0 ? (raw * weight) / 100 : raw;
+      const weighted = applyConfiguredWeight(raw, weight);
 
       nodeScores.push({
         nodeId: node.id,
@@ -291,7 +313,7 @@ export class ScoringRuntimeService {
     const domainScores = model.nodes.map((domain) => {
       const raw = compute(domain);
       const domainWeight = domain.weight ?? 0;
-      const weighted = domainWeight > 0 ? (raw * domainWeight) / 100 : raw;
+      const weighted = applyConfiguredWeight(raw, domainWeight);
       return {
         nodeId: domain.id,
         code: domain.code,
@@ -304,15 +326,37 @@ export class ScoringRuntimeService {
       } satisfies RuntimeNodeScore;
     });
 
-    const globalScore = domainScores.reduce((sum, domain) => sum + domain.weightedScore, 0);
+    const rootWeightTotal = sumWeights(model.nodes.map((domain) => domain.weight));
+    let globalScore = rootWeightTotal > 0
+      ? domainScores.reduce((sum, domain) => sum + domain.weightedScore, 0)
+      : domainScores.length > 0
+        ? domainScores.reduce((sum, domain) => sum + domain.rawScore, 0) / domainScores.length
+        : 0;
     const triggeredRules: RuntimeScoreResult["triggeredRules"] = [];
+    let malusTotal = 0;
+
+    const scoresByCode = Object.fromEntries(
+      nodeScores.map((score) => [score.code, score.rawScore])
+    );
+    const scoresByNodeId = Object.fromEntries(
+      nodeScores.map((score) => [score.nodeId, score.rawScore])
+    );
+    const answersByNodeId = Object.fromEntries(
+      answers.map((answer) => [answer.nodeId, answer])
+    );
 
     for (const rule of model.rules) {
-      // Rule execution is intentionally conservative until expression engine is introduced.
-      // We only materialize rules that are configured as always-on.
-      if (rule.conditionExpression.trim().toLowerCase() !== "always") {
-        continue;
-      }
+      const scopedScore = rule.nodeId ? scoresByNodeId[rule.nodeId] : globalScore;
+      const triggered = evaluateSafeBooleanExpression(rule.conditionExpression, {
+        globalScore,
+        score: scopedScore ?? globalScore,
+        scores: scoresByCode,
+        nodeScores: scoresByNodeId,
+        answers: answersByNodeId,
+      });
+
+      if (!triggered) continue;
+
       triggeredRules.push({
         ruleId: rule.id,
         code: rule.code,
@@ -320,14 +364,31 @@ export class ScoringRuntimeService {
         actionType: rule.actionType,
         message: rule.messageUser,
       });
-      if (rule.blocking) {
+
+      if (rule.ruleType === "MALUS" || rule.actionType === "APPLY_MALUS") {
+        malusTotal += Math.abs(rule.penaltyValue ?? 0);
+      }
+
+      if (
+        rule.blocking ||
+        ["NO_GO", "HARD_STOP", "BLOCK_SUBMISSION"].includes(rule.ruleType) ||
+        ["REJECT", "BLOCK", "BLOCK_SUBMISSION"].includes(rule.actionType)
+      ) {
         alerts.push({
           code: "BLOCKING_RULE_TRIGGERED",
           message: rule.messageUser ?? `Blocking rule ${rule.code} triggered`,
           severity: "CRITICAL",
         });
+      } else if (rule.ruleType === "WARNING" || rule.actionType === "SHOW_WARNING") {
+        alerts.push({
+          code: "WARNING_RULE_TRIGGERED",
+          message: rule.messageUser ?? `Warning rule ${rule.code} triggered`,
+          severity: "WARNING",
+        });
       }
     }
+
+    globalScore = Math.max(0, Math.min(100, globalScore - malusTotal));
 
     const decision = alerts.some((alert) => alert.severity === "CRITICAL")
       ? { status: "REJECT" as const, reason: "At least one blocking rule has been triggered" }

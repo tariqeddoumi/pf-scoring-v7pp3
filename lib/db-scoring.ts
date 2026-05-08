@@ -1,350 +1,202 @@
-/**
- * Database Layer for PF Scoring V7++ Evaluations
- * Handles saving and retrieving evaluations from Supabase
- */
+import prisma from "@/lib/prisma-client";
+import { auditSensitiveAction } from "@/lib/services/audit-trail-service";
 
-import { PrismaClient } from "@prisma/client";
-import {
-  ScoringResult,
-  StressTestResult,
-  Evaluation,
-  EvaluationStatus,
-} from "@/types/scoring-v7plus";
-
-const prisma = new PrismaClient();
-
-// ============================================================================
-// EVALUATION OPERATIONS
-// ============================================================================
-
-/**
- * Save a new evaluation to the database
- */
-export async function saveEvaluation(
-  projectId: string,
-  analystId: string,
-  scoringResult: ScoringResult,
-  stressTestResult?: StressTestResult
-): Promise<Evaluation> {
-  try {
-    // Create evaluation record
-    const evaluation = await prisma.evaluation.create({
-      data: {
-        projectId,
-        analystId,
-        scoringResult: scoringResult as any, // Store as JSON
-        stressTestResult: stressTestResult as any, // Store as JSON if provided
-        rating: scoringResult.rating,
-        finalScore: scoringResult.finalScore,
-        recommendation: scoringResult.recommendation,
-        probabilityOfDefault: scoringResult.probabilityOfDefault,
-        triggeredNOGOs: scoringResult.triggeredNOGOs as any,
-        appliedMALUS: scoringResult.appliedMALUS as any,
-        malusTotal: scoringResult.malusTotal,
-        status: "valide",
-        version: "7.0",
-      },
-    });
-
-    return evaluation as any;
-  } catch (error) {
-    throw error;
-  }
+export async function saveEvaluation(): Promise<never> {
+  throw new Error(
+    "Legacy Evaluation writes are disabled. Use ScoringEvaluationService and ScoringEvaluation instead."
+  );
 }
 
-/**
- * Retrieve an evaluation by ID
- */
-export async function getEvaluation(
-  evaluationId: string
-): Promise<Evaluation | null> {
-  try {
-    return (await prisma.evaluation.findUnique({
-      where: { id: evaluationId },
-      include: {
-        project: true,
-        analyst: true,
-      },
-    })) as any;
-  } catch (error) {
-    throw error;
-  }
+export async function getEvaluation(evaluationId: string) {
+  const evaluation = await prisma.scoringEvaluation.findUnique({
+    where: { id: evaluationId },
+    include: {
+      project: true,
+      analyst: true,
+      answers: true,
+      nodeResults: true,
+      changeLogs: true,
+    },
+  });
+
+  if (!evaluation) return null;
+
+  return {
+    ...evaluation,
+    project: evaluation.project
+      ? { ...evaluation.project, name: evaluation.project.nom }
+      : null,
+    scoringResult: evaluation.summaryJson ? JSON.parse(evaluation.summaryJson) : {},
+    stressTestResult: null,
+    rating: evaluation.rating ?? "D",
+    finalScore: evaluation.finalScore ?? 0,
+    recommendation: evaluation.recommendation ?? "REVIEW",
+    probabilityOfDefault: evaluation.probabilityOfDefault ?? 0,
+    triggeredNOGOs: evaluation.triggeredRulesJson
+      ? JSON.parse(evaluation.triggeredRulesJson)
+      : [],
+    appliedMALUS: [],
+    malusTotal: evaluation.malusTotal ?? 0,
+    version: "V7++.5",
+  };
 }
 
-/**
- * List evaluations for a project
- */
-export async function getProjectEvaluations(
-  projectId: string,
-  limit: number = 10,
-  offset: number = 0
-): Promise<Evaluation[]> {
-  try {
-    return (await prisma.evaluation.findMany({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      skip: offset,
-    })) as any;
-  } catch (error) {
-    throw error;
-  }
+export async function getProjectEvaluations(projectId: string) {
+  return prisma.scoringEvaluation.findMany({
+    where: { projectId },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
-/**
- * Update evaluation status
- */
 export async function updateEvaluationStatus(
   evaluationId: string,
-  status: EvaluationStatus,
+  status: "brouillon" | "soumis" | "en_revue" | "retour_correction" | "valide" | "rejete" | "archive",
+  userId?: string,
   notes?: string
-): Promise<Evaluation> {
-  try {
-    return (await prisma.evaluation.update({
-      where: { id: evaluationId },
-      data: {
-        status: status as any,
-        notes,
-        updatedAt: new Date(),
-      },
-    })) as any;
-  } catch (error) {
-    throw error;
+) {
+  const evaluation = await prisma.scoringEvaluation.update({
+    where: { id: evaluationId },
+    data: { status, notes },
+  });
+
+  if (userId) {
+    await auditSensitiveAction({
+      userId,
+      action: "SCORING_EVALUATION_STATUS_UPDATE",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: { status, notes },
+    });
   }
+
+  return evaluation;
 }
 
-/**
- * Get latest evaluation for a project
- */
-export async function getLatestEvaluation(
-  projectId: string
-): Promise<Evaluation | null> {
-  try {
-    return (await prisma.evaluation.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-    })) as any;
-  } catch (error) {
-    throw error;
-  }
+export async function getLatestEvaluation(projectId: string) {
+  return prisma.scoringEvaluation.findFirst({
+    where: { projectId },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
-/**
- * Save stress test results for an evaluation
- */
 export async function saveStressTestResults(
   evaluationId: string,
-  stressTestResult: StressTestResult
-): Promise<any> {
-  try {
-    // Update evaluation with stress test results
-    const evaluation = await prisma.evaluation.update({
-      where: { id: evaluationId },
-      data: {
-        stressTestResult: stressTestResult as any,
-      },
-    });
-
-    // Save individual scenario results
-    if (stressTestResult.scenarios) {
-      for (const scenario of stressTestResult.scenarios) {
-        await prisma.stressTestScenarioResult.create({
-          data: {
-            evaluationId,
-            scenarioId: scenario.scenarioId as string,
-            scenarioName: scenario.name,
-            dscrBase: scenario.dscrBase || 0,
-            dscrStress: scenario.dscrStress || 0,
-            status: scenario.status,
-            margin: scenario.margin || 0,
-            notes: scenario.notes,
-          },
-        });
-      }
-    }
-
-    return evaluation;
-  } catch (error) {
-    throw error;
-  }
-}
-
-// ============================================================================
-// AUDIT LOGGING
-// ============================================================================
-
-/**
- * Log a scoring action to audit trail
- */
-export async function logScoringAction(
-  userId: string,
-  action: "CALCULATE" | "RECALCULATE" | "STRESS_TEST",
-  details?: string,
-  changes?: any,
-  evaluationId?: string
+  results: unknown,
+  userId?: string
 ): Promise<void> {
-  try {
-    await prisma.scoringAuditLog.create({
-      data: {
-        evaluationId: evaluationId || "",
-        userId,
-        action,
-        changes: changes as any,
-      },
+  const evaluation = await prisma.scoringEvaluation.update({
+    where: { id: evaluationId },
+    data: {
+      summaryJson: JSON.stringify({ stressTestResult: results }),
+    },
+  });
+
+  if (userId) {
+    await auditSensitiveAction({
+      userId,
+      action: "SCORING_EVALUATION_STRESS_TEST_SAVE",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: results,
     });
-  } catch (error) {
-    // Don't throw - logging failure shouldn't break the flow
   }
 }
 
-/**
- * Get audit logs for an evaluation
- */
-export async function getAuditLogs(evaluationId: string): Promise<any[]> {
-  try {
-    // Note: This requires evaluationId to be linked in ScoringAuditLog
-    // For now, retrieve all logs and filter by user
-    return (await prisma.scoringAuditLog.findMany({
-      orderBy: { timestamp: "desc" },
-      take: 50,
-    })) as any;
-  } catch (error) {
-    throw error;
-  }
+export async function logScoringAction(
+  evaluationId: string,
+  userId: string,
+  action: string,
+  details?: unknown
+): Promise<void> {
+  const evaluation = await prisma.scoringEvaluation.findUnique({
+    where: { id: evaluationId },
+    select: { projectId: true },
+  });
+
+  await auditSensitiveAction({
+    userId,
+    action,
+    evaluationId,
+    projectId: evaluation?.projectId,
+    entityType: "ScoringEvaluation",
+    entityId: evaluationId,
+    details,
+  });
 }
 
-// ============================================================================
-// ANALYTICS & REPORTING
-// ============================================================================
+export async function getAuditLogs(evaluationId: string): Promise<unknown[]> {
+  const [changeLogs, auditLogs] = await Promise.all([
+    prisma.scoringChangeLog.findMany({
+      where: { evaluationId },
+      orderBy: { changedAt: "desc" },
+    }),
+    prisma.auditLog.findMany({
+      where: { details: { contains: evaluationId } },
+      orderBy: { dateAction: "desc" },
+    }),
+  ]);
 
-/**
- * Get evaluation statistics for a project
- */
+  return [...changeLogs, ...auditLogs];
+}
+
 export async function getProjectEvaluationStats(projectId: string): Promise<{
-  totalEvaluations: number;
+  total: number;
+  approved: number;
+  rejected: number;
+  pending: number;
   averageScore: number;
-  ratingDistribution: Record<string, number>;
-  lastEvaluation: Evaluation | null;
 }> {
-  try {
-    const evaluations = (await prisma.evaluation.findMany({
-      where: { projectId },
-    })) as any[];
+  const evaluations = await prisma.scoringEvaluation.findMany({
+    where: { projectId },
+    select: { status: true, finalScore: true },
+  });
 
-    if (evaluations.length === 0) {
-      return {
-        totalEvaluations: 0,
-        averageScore: 0,
-        ratingDistribution: {},
-        lastEvaluation: null,
-      };
-    }
+  const scores = evaluations
+    .map((evaluation) => evaluation.finalScore)
+    .filter((score): score is number => typeof score === "number");
 
-    // Calculate average score
-    const avgScore =
-      evaluations.reduce((sum, e) => sum + e.finalScore, 0) /
-      evaluations.length;
-
-    // Rating distribution
-    const ratingDist: Record<string, number> = {};
-    evaluations.forEach((e) => {
-      ratingDist[e.rating] = (ratingDist[e.rating] || 0) + 1;
-    });
-
-    return {
-      totalEvaluations: evaluations.length,
-      averageScore: Math.round(avgScore * 100) / 100,
-      ratingDistribution: ratingDist,
-      lastEvaluation: evaluations[0],
-    };
-  } catch (error) {
-    throw error;
-  }
+  return {
+    total: evaluations.length,
+    approved: evaluations.filter((evaluation) => evaluation.status === "valide").length,
+    rejected: evaluations.filter((evaluation) => evaluation.status === "rejete").length,
+    pending: evaluations.filter((evaluation) => ["brouillon", "soumis", "en_revue"].includes(evaluation.status)).length,
+    averageScore: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0,
+  };
 }
 
-/**
- * Export evaluations to CSV
- */
-export async function exportEvaluationsToCSV(
-  projectId: string
-): Promise<string> {
-  try {
-    const evaluations = (await prisma.evaluation.findMany({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-    })) as any[];
+export async function exportEvaluationsToCSV(projectId?: string): Promise<string> {
+  const evaluations = await prisma.scoringEvaluation.findMany({
+    where: projectId ? { projectId } : undefined,
+    include: { project: true, analyst: true },
+    orderBy: { createdAt: "desc" },
+  });
 
-    if (evaluations.length === 0) {
-      return "No evaluations found";
-    }
+  const header = "id,project,analyst,status,finalScore,rating,createdAt";
+  const rows = evaluations.map((evaluation) =>
+    [
+      evaluation.id,
+      evaluation.project.nom,
+      evaluation.analyst.email,
+      evaluation.status,
+      evaluation.finalScore ?? "",
+      evaluation.rating ?? "",
+      evaluation.createdAt.toISOString(),
+    ]
+      .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+      .join(",")
+  );
 
-    // CSV header
-    const headers = [
-      "ID",
-      "Created",
-      "Rating",
-      "Score",
-      "Recommendation",
-      "PD",
-      "NO-GOs",
-      "MALUS",
-    ];
-
-    // CSV rows
-    const rows = evaluations.map((e) => [
-      e.id,
-      e.createdAt.toISOString().split("T")[0],
-      e.rating,
-      e.finalScore.toFixed(2),
-      e.recommendation,
-      (e.probabilityOfDefault * 100).toFixed(1) + "%",
-      e.triggeredNOGOs?.length || 0,
-      e.malusTotal.toFixed(1),
-    ]);
-
-    // Format CSV
-    const csv =
-      [headers, ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join(
-        "\n"
-      ) + "\n";
-
-    return csv;
-  } catch (error) {
-    throw error;
-  }
+  return [header, ...rows].join("\n");
 }
 
-// ============================================================================
-// CLEANUP & MAINTENANCE
-// ============================================================================
-
-/**
- * Delete old evaluations (keep only recent ones)
- */
-export async function deleteOldEvaluations(
-  daysToKeep: number = 90
-): Promise<number> {
-  try {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-
-    const result = await prisma.evaluation.deleteMany({
-      where: {
-        createdAt: {
-          lt: cutoffDate,
-        },
-      },
-    });
-
-    return result.count;
-  } catch (error) {
-    throw error;
-  }
+export async function deleteOldEvaluations(): Promise<never> {
+  throw new Error("Physical deletion of evaluations is disabled. Archive ScoringEvaluation records instead.");
 }
 
-/**
- * Disconnect Prisma client
- */
 export async function disconnect(): Promise<void> {
   await prisma.$disconnect();
 }

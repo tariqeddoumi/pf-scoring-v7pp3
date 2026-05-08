@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma-client";
-import { ScoringEngine } from "./scoring-engine";
+import { auditSensitiveAction } from "@/lib/services/audit-trail-service";
+import { RuntimeAnswerPayload } from "@/lib/scoring-runtime-contract";
+import { ScoringRuntimeService } from "@/lib/services/scoring-runtime-service";
 
 export class ScoringEvaluationService {
   /**
@@ -30,6 +32,16 @@ export class ScoringEvaluationService {
       include: {
         answers: true,
       },
+    });
+
+    await auditSensitiveAction({
+      userId: data.evaluatedBy,
+      action: "SCORING_EVALUATION_CREATE",
+      evaluationId: evaluation.id,
+      projectId: data.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluation.id,
+      details: { modelId: data.modelId, modelVersionId: data.modelVersionId },
     });
 
     return evaluation;
@@ -110,6 +122,15 @@ export class ScoringEvaluationService {
       });
     }
 
+    await auditSensitiveAction({
+      userId: data.recordedBy,
+      action: "SCORING_EVALUATION_ANSWER_UPSERT",
+      evaluationId: data.evaluationId,
+      entityType: "ScoringEvaluationAnswer",
+      entityId: answer.id,
+      details: { nodeId: data.nodeId },
+    });
+
     return answer;
   }
 
@@ -152,6 +173,16 @@ export class ScoringEvaluationService {
       },
     });
 
+    await auditSensitiveAction({
+      userId: submittedBy,
+      action: "SCORING_EVALUATION_SUBMIT",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: { status: "soumis" },
+    });
+
     return updated;
   }
 
@@ -176,7 +207,18 @@ export class ScoringEvaluationService {
       data: {
         status: "valide",
         validatedAt: new Date(),
+        approvedAt: new Date(),
       },
+    });
+
+    await auditSensitiveAction({
+      userId: approvedBy,
+      action: "SCORING_EVALUATION_VALIDATE",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: { status: "valide" },
     });
 
     return updated;
@@ -198,96 +240,139 @@ export class ScoringEvaluationService {
       throw new Error("Evaluation not found");
     }
 
-    if (!["soumis", "valide"].includes(evaluation.status)) {
-      throw new Error("Can only reject submitted or validated evaluations");
+    if (!["soumis", "en_revue", "valide"].includes(evaluation.status)) {
+      throw new Error("Can only reject submitted, in-review or validated evaluations");
     }
 
-    // Reset to draft for corrections
     const updated = await prisma.scoringEvaluation.update({
       where: { id: evaluationId },
       data: {
-        status: "brouillon",
+        status: "rejete",
         notes: reason,
       },
+    });
+
+    await auditSensitiveAction({
+      userId: rejectedBy,
+      action: "SCORING_EVALUATION_REJECT",
+      evaluationId,
+      projectId: evaluation.projectId,
+      entityType: "ScoringEvaluation",
+      entityId: evaluationId,
+      details: { status: "rejete", reason },
     });
 
     return updated;
   }
 
   /**
-   * Calculate scores for evaluation using the generic scoring engine
+   * Calculate scores for evaluation using the governed V7++ runtime engine.
    */
   static async calculateScores(evaluationId: string) {
     const evaluation = await prisma.scoringEvaluation.findUnique({
       where: { id: evaluationId },
-      select: { modelVersionId: true },
+      include: { answers: true },
     });
 
     if (!evaluation) {
       throw new Error("Evaluation not found");
     }
 
-    // Use the generic scoring engine
-    const nodeResults = await ScoringEngine.scoreEvaluation(
-      evaluationId,
-      evaluation.modelVersionId
+    const model = await ScoringRuntimeService.getRuntimeModel(evaluation.modelVersionId);
+    const runtimeAnswers: RuntimeAnswerPayload[] = evaluation.answers.map((answer) => ({
+      nodeId: answer.nodeId,
+      valueString: answer.valueString,
+      valueNumber: answer.valueNumber,
+      valueBoolean: answer.valueBoolean,
+      valueDate: answer.valueDate?.toISOString() ?? null,
+      manualScore: answer.manualScore,
+    }));
+
+    const result = ScoringRuntimeService.evaluateAnswers(model, runtimeAnswers);
+    const nodeResults = new Map(
+      result.nodeScores.map((score) => [
+        score.nodeId,
+        {
+          nodeId: score.nodeId,
+          rawScore: score.rawScore,
+          weightedScore: score.weightedScore,
+          normalizedScore: score.rawScore,
+          weight: score.weightApplied,
+          aggregationMethod: score.aggregationMethod ?? undefined,
+          explanation: `Runtime ${score.scoringMethod ?? "aggregation"} score`,
+          ruleImpacts: [],
+        },
+      ])
     );
 
-    // Store results in database
-    for (const [nodeId, score] of nodeResults.entries()) {
-      await prisma.scoringEvaluationNodeResult.upsert({
-        where: {
-          evaluationId_nodeId: {
+    await prisma.$transaction(async (tx) => {
+      await tx.scoringEvaluationNodeResult.deleteMany({
+        where: { evaluationId },
+      });
+
+      for (const nodeScore of result.nodeScores) {
+        await tx.scoringEvaluationNodeResult.create({
+          data: {
             evaluationId,
-            nodeId,
+            nodeId: nodeScore.nodeId,
+            rawScore: nodeScore.rawScore,
+            weightedScore: nodeScore.weightedScore,
+            normalizedScore: nodeScore.rawScore,
+            aggregationMethod: nodeScore.aggregationMethod,
+            traceJson: JSON.stringify(nodeScore),
           },
-        },
-        create: {
-          evaluationId,
-          nodeId,
-          rawScore: score.rawScore,
-          weightedScore: score.weightedScore,
-          normalizedScore: score.normalizedScore,
-          explanation: score.explanation,
-          aggregationMethod: score.aggregationMethod,
-          ruleImpactJson: JSON.stringify(score.ruleImpacts),
-          traceJson: JSON.stringify({
-            weight: score.weight,
-            method: score.aggregationMethod,
-            ruleCount: score.ruleImpacts.length,
-          }),
-        },
-        update: {
-          rawScore: score.rawScore,
-          weightedScore: score.weightedScore,
-          normalizedScore: score.normalizedScore,
-          explanation: score.explanation,
-          aggregationMethod: score.aggregationMethod,
-          ruleImpactJson: JSON.stringify(score.ruleImpacts),
-          traceJson: JSON.stringify({
-            weight: score.weight,
-            method: score.aggregationMethod,
-            ruleCount: score.ruleImpacts.length,
+        });
+      }
+
+      await tx.scoringEvaluation.update({
+        where: { id: evaluationId },
+        data: {
+          finalScore: result.globalScore,
+          rating: this.ratingFromScore(result.globalScore),
+          recommendation: result.decision.status,
+          probabilityOfDefault: this.probabilityOfDefaultFromScore(result.globalScore),
+          malusTotal: result.triggeredRules.filter((rule) => rule.actionType === "APPLY_MALUS").length,
+          triggeredRulesJson: JSON.stringify(result.triggeredRules),
+          summaryJson: JSON.stringify({
+            alerts: result.alerts,
+            decision: result.decision,
+            domainScores: result.domainScores,
+            nodeScores: result.nodeScores,
           }),
         },
       });
-    }
-
-    // Calculate and store global score
-    const finalScores = await ScoringEngine.getFinalScores(
-      evaluationId,
-      nodeResults
-    );
-
-    // Update evaluation with final score
-    await prisma.scoringEvaluation.update({
-      where: { id: evaluationId },
-      data: {
-        finalScore: finalScores.globalScore,
-      },
     });
 
-    return { nodeResults, finalScores };
+    return {
+      nodeResults,
+      finalScores: {
+        globalScore: result.globalScore,
+        scores: nodeResults,
+        summary: {
+          totalNodes: result.nodeScores.length,
+          rootNodeCount: result.domainScores.length,
+          decision: result.decision,
+          alerts: result.alerts,
+          domainScores: result.domainScores,
+          timestamp: new Date(),
+        },
+      },
+    };
+  }
+
+  private static ratingFromScore(score: number): string {
+    if (score >= 90) return "AAA";
+    if (score >= 85) return "AA";
+    if (score >= 75) return "A";
+    if (score >= 65) return "BBB";
+    if (score >= 55) return "BB";
+    if (score >= 45) return "B";
+    if (score >= 30) return "CCC";
+    return "D";
+  }
+
+  private static probabilityOfDefaultFromScore(score: number): number {
+    return Math.max(0.1, Math.min(35, Number((35 - score * 0.34).toFixed(2))));
   }
 
   /**
@@ -307,6 +392,10 @@ export class ScoringEvaluationService {
             node: true,
           },
         },
+        project: true,
+        client: true,
+        model: true,
+        analyst: true,
         version: {
           include: {
             nodes: true,

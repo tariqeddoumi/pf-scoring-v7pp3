@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma-client";
 import { ScoringAnswerType } from "@prisma/client";
+import { evaluateSafeBooleanExpression, evaluateSafeNumericExpression } from "@/lib/services/safe-expression-engine";
 
 /**
  * Result of scoring a single node
@@ -245,9 +246,25 @@ export class ScoringEngine {
     if (!formula) return 0;
 
     try {
-      // Simple formula evaluation (can be enhanced with expression parser)
-      // For now, use the manual score if formula exists
-      return answer.manualScore || 0;
+      const variables = formula.variablesJson
+        ? (JSON.parse(formula.variablesJson) as Record<string, unknown>)
+        : {};
+      const value = evaluateSafeNumericExpression(formula.expression, {
+        answer: {
+          valueNumber: answer.valueNumber,
+          valueString: answer.valueString,
+          valueBoolean: answer.valueBoolean,
+          manualScore: answer.manualScore,
+        },
+        value: answer.valueNumber ?? answer.manualScore ?? 0,
+        manualScore: answer.manualScore ?? 0,
+        ...variables,
+      });
+      const bounded = Math.max(
+        formula.minOutput ?? Number.NEGATIVE_INFINITY,
+        Math.min(formula.maxOutput ?? Number.POSITIVE_INFINITY, value)
+      );
+      return Number.isFinite(bounded) ? bounded : formula.fallbackValue ?? 0;
     } catch {
       return 0;
     }
@@ -352,8 +369,7 @@ export class ScoringEngine {
     }
 
     for (const rule of node.rules) {
-      // Simplified rule evaluation
-      const triggered = await this.evaluateRuleCondition(rule);
+      const triggered = await this.evaluateRuleCondition(rule, nodeScore);
 
       if (triggered) {
         const impact: RuleImpact = {
@@ -375,13 +391,18 @@ export class ScoringEngine {
   /**
    * Evaluate rule condition (simplified)
    */
-  private static async evaluateRuleCondition(rule: any): Promise<boolean> {
-    // Simplified evaluation - in production use expression evaluator
-    if (!rule.conditionExpression) return false;
+  private static async evaluateRuleCondition(
+    rule: any,
+    nodeScore: NodeScore
+  ): Promise<boolean> {
+    if (!rule.isActive || !rule.conditionExpression) return false;
 
-    // For now, rules are triggered based on metadata
-    // In full implementation, use safe expression evaluator
-    return rule.isActive === true;
+    return evaluateSafeBooleanExpression(rule.conditionExpression, {
+      score: nodeScore.normalizedScore,
+      rawScore: nodeScore.rawScore,
+      weightedScore: nodeScore.weightedScore,
+      nodeId: nodeScore.nodeId,
+    });
   }
 
   /**

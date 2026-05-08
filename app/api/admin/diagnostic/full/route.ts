@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTokenFromCookie, verifyToken } from "@/lib/auth";
+import { withRoleAuth } from "@/lib/auth-middleware";
 import { getErrorMessage } from "@/lib/error-handler";
 import prisma from "@/lib/prisma-client";
 
@@ -55,8 +55,8 @@ async function testDatabaseConnection(): Promise<DiagnosticTest> {
 async function testUserCount(): Promise<DiagnosticTest> {
   try {
     const count = await prisma.user.count();
-    const admins = await prisma.user.count({ where: { role: "admin" } });
-    const analysts = await prisma.user.count({ where: { role: "analyst" } });
+    const admins = await prisma.user.count({ where: { role: "ADMIN_TECH" } });
+    const analysts = await prisma.user.count({ where: { role: "ANALYST" } });
 
     return {
       name: "Statistiques Utilisateurs",
@@ -259,60 +259,35 @@ function getEnvironmentVariables(): EnvironmentVar[] {
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    // Verify authentication
-    const cookieHeader = request.headers.get("cookie");
-    const token = getTokenFromCookie(cookieHeader);
+  return withRoleAuth(request, ["ADMIN_TECH"], async () => {
+    try {
+      const tests = await Promise.all([
+        testDatabaseConnection(),
+        testUserCount(),
+        testProjectCount(),
+        Promise.resolve(testJWTSecret()),
+        Promise.resolve(testOAuthConfiguration()),
+        Promise.resolve(testApplicationURL()),
+        Promise.resolve(testNodeEnvironment()),
+      ]);
 
-    if (!token) {
-      return NextResponse.json(
-        { error: "Authentification requise" },
-        { status: 401 }
-      );
-    }
+      const environment = getEnvironmentVariables();
 
-    // Verify token and check admin role
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: "Token invalide" }, { status: 401 });
-    }
-
-    if (payload.role !== "admin") {
+      return NextResponse.json({
+        success: true,
+        tests,
+        environment,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: unknown) {
+      console.error("Erreur diagnostique:", error);
       return NextResponse.json(
         {
-          error: "Seuls les administrateurs peuvent accéder aux diagnostiques",
+          error: "Erreur lors de l'exécution des diagnostiques",
+          details: getErrorMessage(error),
         },
-        { status: 403 }
+        { status: 500 }
       );
     }
-
-    // Run all diagnostic tests in parallel
-    const tests = await Promise.all([
-      testDatabaseConnection(),
-      testUserCount(),
-      testProjectCount(),
-      Promise.resolve(testJWTSecret()),
-      Promise.resolve(testOAuthConfiguration()),
-      Promise.resolve(testApplicationURL()),
-      Promise.resolve(testNodeEnvironment()),
-    ]);
-
-    const environment = getEnvironmentVariables();
-
-    return NextResponse.json({
-      success: true,
-      tests,
-      environment,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: unknown) {
-    console.error("Erreur diagnostique:", error);
-    return NextResponse.json(
-      {
-        error: "Erreur lors de l'exécution des diagnostiques",
-        details: getErrorMessage(error),
-      },
-      { status: 500 }
-    );
-  }
+  });
 }

@@ -1,4 +1,6 @@
 import prisma from "@/lib/prisma-client";
+import { evaluateSafeBooleanExpression } from "@/lib/services/safe-expression-engine";
+import { ScoringNodeRule } from "@prisma/client";
 
 /**
  * Rule evaluation context
@@ -7,9 +9,9 @@ export interface RuleContext {
   evaluationId: string;
   nodeId: string;
   nodeScore: number;
-  projectData?: any;
-  evaluationData?: any;
-  allAnswers?: Map<string, any>;
+  projectData?: Record<string, unknown>;
+  evaluationData?: Record<string, unknown>;
+  allAnswers?: Map<string, unknown>;
 }
 
 /**
@@ -61,7 +63,7 @@ export class RuleEngine {
    * Evaluate a single rule
    */
   static async evaluateRule(
-    rule: any,
+    rule: ScoringNodeRule,
     context: RuleContext
   ): Promise<RuleEvaluation | null> {
     try {
@@ -85,8 +87,8 @@ export class RuleEngine {
         penalty: rule.penaltyValue || 0,
         blocking: rule.blocking || false,
         message: rule.description || "",
-        messageUser: rule.messageUser,
-        messageCommittee: rule.messageCommittee,
+        messageUser: rule.messageUser ?? undefined,
+        messageCommittee: rule.messageCommittee ?? undefined,
       };
     } catch (error) {
       console.error(`Error evaluating rule ${rule.code}:`, error);
@@ -104,44 +106,20 @@ export class RuleEngine {
     if (!expression) return false;
 
     try {
-      // Build safe evaluation context
-      const evalContext = {
+      const answers = context.allAnswers
+        ? Object.fromEntries(context.allAnswers.entries())
+        : {};
+
+      return evaluateSafeBooleanExpression(expression, {
         score: context.nodeScore,
         nodeId: context.nodeId,
         evaluationId: context.evaluationId,
-        ...context.projectData,
-        ...context.evaluationData,
-      };
-
-      // Simple condition evaluation patterns
-      // In production, use a safe expression evaluator library
-
-      // Pattern: score > value
-      if (expression.includes(">")) {
-        const [left, right] = expression.split(">").map((s) => s.trim());
-        if (left === "score") {
-          return context.nodeScore > parseFloat(right);
-        }
-      }
-
-      // Pattern: score < value
-      if (expression.includes("<")) {
-        const [left, right] = expression.split("<").map((s) => s.trim());
-        if (left === "score") {
-          return context.nodeScore < parseFloat(right);
-        }
-      }
-
-      // Pattern: score == value
-      if (expression.includes("==")) {
-        const [left, right] = expression.split("==").map((s) => s.trim());
-        if (left === "score") {
-          return context.nodeScore === parseFloat(right);
-        }
-      }
-
-      // Default: evaluate as boolean
-      return Boolean(evalContext);
+        project: context.projectData ?? {},
+        evaluation: context.evaluationData ?? {},
+        answers,
+        ...(context.projectData ?? {}),
+        ...(context.evaluationData ?? {}),
+      });
     } catch (error) {
       console.error("Error evaluating condition:", error);
       return false;
@@ -182,7 +160,7 @@ export class RuleEngine {
   static hasBlockingRules(evaluations: RuleEvaluation[]): boolean {
     return evaluations.some(
       (e) =>
-        e.triggered && (e.ruleType === "HARD_STOP" || e.ruleType === "NO_GO")
+        e.triggered && (["HARD_STOP", "NO_GO", "BLOCK_SUBMISSION"].includes(e.ruleType))
     );
   }
 

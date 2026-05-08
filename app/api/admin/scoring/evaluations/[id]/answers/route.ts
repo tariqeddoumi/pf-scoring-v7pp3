@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveRouteParams, type RouteContext } from '@/lib/route-context';
-import { withAuth } from '@/lib/auth-middleware';
+import { withAdminAuth } from '@/lib/auth-middleware';
 import { ScoringEvaluationService } from '@/lib/services/scoring-evaluation-service';
 
 async function handler(
@@ -96,7 +96,7 @@ export async function GET(
   context: RouteContext
 ) {
   const { id } = await resolveRouteParams(context as any);
-  return withAuth(request, (req, user) =>
+  return withAdminAuth(request, (req, user) =>
     handler(req, user, { params: { id } })
   );
 }
@@ -106,7 +106,7 @@ export async function POST(
   context: RouteContext
 ) {
   const { id } = await resolveRouteParams(context as any);
-  return withAuth(request, (req, user) =>
+  return withAdminAuth(request, (req, user) =>
     handler(req, user, { params: { id } })
   );
 }

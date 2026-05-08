@@ -229,11 +229,12 @@ export async function POST(
 
       // Log stress test action
       await logScoringAction(
+        evaluationId,
         analystId,
         "STRESS_TEST",
-        `Stress test completed: ${overallRating} resilience (${result.summary.vulnerableScenarios.length} vulnerable scenarios)`,
-        undefined,
-        evaluationId
+        {
+          message: `Stress test completed: ${overallRating} resilience (${result.summary.vulnerableScenarios.length} vulnerable scenarios)`,
+        }
       );
     } catch (dbError) {
       console.error("[DB ERROR] Failed to save stress test results:", dbError);

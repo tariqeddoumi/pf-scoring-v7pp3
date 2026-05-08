@@ -24,14 +24,19 @@ interface Evaluation {
   recommendation: string;
   notes?: string;
   status: string;
-  scoreFinancier?: number;
-  scoreTechnique?: number;
-  scoreMarche?: number;
-  scoreEnvironnemental?: number;
-  scoreSocial?: number;
-  scoreGouvenance?: number;
-  scoreJuridique?: number;
-  scorePays?: number;
+  summaryJson?: string | null;
+  triggeredRulesJson?: string | null;
+  nodeResults?: Array<{
+    rawScore?: number | null;
+    weightedScore?: number | null;
+    normalizedScore?: number | null;
+    node?: {
+      id: string;
+      code: string;
+      label: string;
+      parentNodeId?: string | null;
+    };
+  }>;
   probabilityOfDefault?: number;
   malusTotal?: number;
   approvedBy?: string;
@@ -63,7 +68,7 @@ const ScoreBar = ({ label, value }: { label: string; value?: number | null }) =>
     <div className="h-2 bg-slate-700 rounded-full">
       <div
         className="h-2 bg-blue-500 rounded-full transition-all"
-        style={{ width: value !== null && value !== undefined ? `${Math.min(value * 10, 100)}%` : "0%" }}
+        style={{ width: value !== null && value !== undefined ? `${Math.min(value, 100)}%` : "0%" }}
       />
     </div>
   </div>
@@ -140,6 +145,64 @@ export default function EvaluationDetailPage({
     rejete: "bg-red-500/20 text-red-400",
   };
 
+  const parsedSummary = (() => {
+    if (!evaluation.summaryJson) return null;
+    try {
+      return JSON.parse(evaluation.summaryJson) as {
+        domainScores?: Array<{ nodeId: string; code: string; rawScore: number; weightedScore: number }>;
+        decision?: { status: string; reason?: string };
+        alerts?: Array<{ code: string; message: string; severity: string }>;
+      };
+    } catch {
+      return null;
+    }
+  })();
+
+  const domainScores =
+    parsedSummary?.domainScores?.map((score) => ({
+      label: score.code,
+      value: score.rawScore,
+      weightedScore: score.weightedScore,
+    })) ??
+    evaluation.nodeResults
+      ?.filter((result) => result.node && !result.node.parentNodeId)
+      .map((result) => ({
+        label: result.node?.label ?? result.node?.code ?? "Domaine",
+        value: result.rawScore ?? result.normalizedScore ?? null,
+        weightedScore: result.weightedScore ?? null,
+      })) ??
+    [];
+
+  const recommendationLabel = (() => {
+    switch (evaluation.recommendation) {
+      case "APPROVE":
+        return "✓ Approuver";
+      case "REVIEW":
+        return "Revue requise";
+      case "APPROVE_WITH_CONDITIONS":
+        return "Sous conditions";
+      case "REJECT":
+        return "✗ Rejeter";
+      default:
+        return "Non calculée";
+    }
+  })();
+
+  const recommendationClass = (() => {
+    switch (evaluation.recommendation) {
+      case "APPROVE":
+        return "bg-green-500/20 text-green-400";
+      case "REJECT":
+        return "bg-red-500/20 text-red-400";
+      case "REVIEW":
+        return "bg-blue-500/20 text-blue-300";
+      case "APPROVE_WITH_CONDITIONS":
+        return "bg-yellow-500/20 text-yellow-400";
+      default:
+        return "bg-slate-500/20 text-slate-400";
+    }
+  })();
+
   const ratingColor = ratingColors[evaluation.rating || ""] || "from-slate-600 to-slate-700";
 
   const tabs = [
@@ -159,13 +222,8 @@ export default function EvaluationDetailPage({
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Recommandation</label>
-              <span className={`inline-block px-3 py-1 rounded-full text-sm ${
-                evaluation.recommendation === "APPROVE" ? "bg-green-500/20 text-green-400" :
-                evaluation.recommendation === "REJECT" ? "bg-red-500/20 text-red-400" :
-                "bg-yellow-500/20 text-yellow-400"
-              }`}>
-                {evaluation.recommendation === "APPROVE" ? "Approuver" :
-                 evaluation.recommendation === "REJECT" ? "Rejeter" : "Approuver sous conditions"}
+              <span className={`inline-block px-3 py-1 rounded-full text-sm ${recommendationClass}`}>
+                {recommendationLabel}
               </span>
             </div>
             <Field label="Rating" value={evaluation.rating} />
@@ -190,7 +248,7 @@ export default function EvaluationDetailPage({
               <div className="text-center">
                 <p className="text-xs text-slate-400 uppercase mb-1">Score final</p>
                 <p className="text-3xl font-bold text-white">{evaluation.finalScore?.toFixed(2) ?? "—"}</p>
-                <p className="text-xs text-slate-500">/10</p>
+                <p className="text-xs text-slate-500">/100</p>
               </div>
               <div className="text-center">
                 <p className="text-xs text-slate-400 uppercase mb-1">Probabilité de défaut</p>
@@ -200,14 +258,13 @@ export default function EvaluationDetailPage({
             </div>
           </div>
           <div className="space-y-4">
-            <ScoreBar label="Financier" value={evaluation.scoreFinancier} />
-            <ScoreBar label="Technique" value={evaluation.scoreTechnique} />
-            <ScoreBar label="Marché" value={evaluation.scoreMarche} />
-            <ScoreBar label="Environnemental" value={evaluation.scoreEnvironnemental} />
-            <ScoreBar label="Social" value={evaluation.scoreSocial} />
-            <ScoreBar label="Gouvernance" value={evaluation.scoreGouvenance} />
-            <ScoreBar label="Juridique" value={evaluation.scoreJuridique} />
-            <ScoreBar label="Pays" value={evaluation.scorePays} />
+            {domainScores.length > 0 ? (
+              domainScores.map((domain) => (
+                <ScoreBar key={domain.label} label={domain.label} value={domain.value} />
+              ))
+            ) : (
+              <p className="text-slate-500 italic">Aucun score de domaine calculé.</p>
+            )}
           </div>
           <Field label="Total malus" value={evaluation.malusTotal?.toFixed(2)} />
         </div>
@@ -272,7 +329,7 @@ export default function EvaluationDetailPage({
             <div>
               <p className="text-sm opacity-80 mb-1">Score Global</p>
               <p className="text-3xl font-bold">{evaluation.finalScore.toFixed(2)}</p>
-              <p className="text-xs opacity-60">/10</p>
+              <p className="text-xs opacity-60">/100</p>
             </div>
             <div>
               <p className="text-sm opacity-80 mb-1">Rating</p>
@@ -284,10 +341,7 @@ export default function EvaluationDetailPage({
             </div>
             <div>
               <p className="text-sm opacity-80 mb-1">Recommandation</p>
-              <p className="text-lg font-semibold">
-                {evaluation.recommendation === "APPROVE" ? "✓ Approuver" :
-                 evaluation.recommendation === "REJECT" ? "✗ Rejeter" : "~ Sous conditions"}
-              </p>
+              <p className="text-lg font-semibold">{recommendationLabel}</p>
             </div>
           </div>
         </div>

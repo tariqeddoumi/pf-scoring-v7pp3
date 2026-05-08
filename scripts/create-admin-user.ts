@@ -1,45 +1,54 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
 async function main() {
-  const email = "admin@pfscoring.ma";
-  const password = "Admin@123456"; // À changer en production
+  const email = requireEnv("ADMIN_EMAIL");
+  const password = requireEnv("ADMIN_PASSWORD");
+  const nom = process.env.ADMIN_LAST_NAME ?? "Administrateur";
+  const prenom = process.env.ADMIN_FIRST_NAME ?? "Technique";
+  const role = (process.env.ADMIN_ROLE ?? "ADMIN_TECH") as UserRole;
+
+  if (password.length < 14) {
+    throw new Error("ADMIN_PASSWORD must contain at least 14 characters");
+  }
 
   try {
-    // Vérifier si l'utilisateur existe
     const existing = await prisma.user.findUnique({
       where: { email },
     });
 
     if (existing) {
-      console.log(`✓ Utilisateur ${email} existe déjà`);
+      console.log(`✓ User ${email} already exists`);
       return;
     }
 
-    // Hasher le mot de passe
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Créer l'utilisateur
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        nom: "Admin",
-        prenom: "PF Scoring",
-        role: "admin",
+        nom,
+        prenom,
+        role,
       },
     });
 
-    console.log("✓ Utilisateur admin créé:");
+    console.log("✓ Admin user created:");
     console.log(`  Email: ${user.email}`);
-    console.log(`  Rôle: ${user.role}`);
-    console.log(`\n⚠️  Mot de passe temporaire: ${password}`);
-    console.log(
-      "   Veuillez le changer immédiatement après la première connexion."
-    );
+    console.log(`  Role: ${user.role}`);
+    console.log("  Password was read from ADMIN_PASSWORD and was not logged.");
   } catch (error) {
     console.error("Erreur:", error);
     process.exit(1);
