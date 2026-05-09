@@ -191,20 +191,6 @@ export default function EditEvaluationPage({
       setSubmitting(true);
       setError(null);
 
-      const metadataResponse = await fetch(`/api/evaluations/${evalId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, recommendation, notes }),
-      });
-      const metadataPayload = await metadataResponse.json();
-
-      if (!metadataResponse.ok) {
-        throw new Error(
-          metadataPayload.error ||
-            "Erreur lors de la sauvegarde des métadonnées"
-        );
-      }
-
       if (canEditAnswers) {
         const scoreResponse = await fetch("/api/evaluations/calculate-score", {
           method: "POST",
@@ -223,6 +209,20 @@ export default function EditEvaluationPage({
         }
       }
 
+      const metadataResponse = await fetch(`/api/evaluations/${evalId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, recommendation, notes }),
+      });
+      const metadataPayload = await metadataResponse.json();
+
+      if (!metadataResponse.ok) {
+        throw new Error(
+          metadataPayload.error ||
+            "Erreur lors de la sauvegarde des métadonnées"
+        );
+      }
+
       router.push(`/evaluations/${evalId}`);
     } catch (err: unknown) {
       setError(
@@ -230,6 +230,33 @@ export default function EditEvaluationPage({
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!evalId) return;
+
+    try {
+      setDeleting(true);
+      setError(null);
+
+      const response = await fetch(`/api/evaluations/${evalId}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Erreur lors de la suppression");
+      }
+
+      router.push("/evaluations");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Erreur lors de la suppression"
+      );
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
