@@ -16,6 +16,8 @@ export type Permission =
   | "PROJECT_CREATE"
   | "PROJECT_UPDATE"
   | "EVALUATION_CREATE"
+  | "EVALUATION_UPDATE"
+  | "EVALUATION_DELETE"
   | "EVALUATION_SUBMIT"
   | "EVALUATION_VALIDATE"
   | "EVALUATION_REJECT"
@@ -54,6 +56,8 @@ export const ROLE_PERMISSIONS: Record<BankingRole, ReadonlySet<Permission>> = {
     "PROJECT_CREATE",
     "PROJECT_UPDATE",
     "EVALUATION_CREATE",
+    "EVALUATION_UPDATE",
+    "EVALUATION_DELETE",
     "EVALUATION_SUBMIT",
     "EVALUATION_VALIDATE",
     "EVALUATION_REJECT",
@@ -68,6 +72,8 @@ export const ROLE_PERMISSIONS: Record<BankingRole, ReadonlySet<Permission>> = {
     "PROJECT_CREATE",
     "PROJECT_UPDATE",
     "EVALUATION_CREATE",
+    "EVALUATION_UPDATE",
+    "EVALUATION_DELETE",
     "EVALUATION_SUBMIT",
     "EVALUATION_VALIDATE",
     "EVALUATION_REJECT",
@@ -80,6 +86,8 @@ export const ROLE_PERMISSIONS: Record<BankingRole, ReadonlySet<Permission>> = {
     "PROJECT_CREATE",
     "PROJECT_UPDATE",
     "EVALUATION_CREATE",
+    "EVALUATION_UPDATE",
+    "EVALUATION_DELETE",
     "EVALUATION_SUBMIT",
     "EVALUATION_VALIDATE",
     "EVALUATION_REJECT",
@@ -89,6 +97,8 @@ export const ROLE_PERMISSIONS: Record<BankingRole, ReadonlySet<Permission>> = {
     "PROJECT_CREATE",
     "PROJECT_UPDATE",
     "EVALUATION_CREATE",
+    "EVALUATION_UPDATE",
+    "EVALUATION_DELETE",
     "EVALUATION_SUBMIT",
   ]),
   VALIDATOR: new Set([
@@ -100,11 +110,17 @@ export const ROLE_PERMISSIONS: Record<BankingRole, ReadonlySet<Permission>> = {
   AUDITOR: new Set(["AUDIT_READ", "DIAGNOSTIC_READ"]),
 };
 
-export function hasPermission(role: string | null | undefined, permission: Permission): boolean {
+export function hasPermission(
+  role: string | null | undefined,
+  permission: Permission
+): boolean {
   return ROLE_PERMISSIONS[normalizeRole(role)].has(permission);
 }
 
-export function hasAnyRole(role: string | null | undefined, allowedRoles: BankingRole[]): boolean {
+export function hasAnyRole(
+  role: string | null | undefined,
+  allowedRoles: BankingRole[]
+): boolean {
   const normalizedRole = normalizeRole(role);
   return allowedRoles.includes(normalizedRole);
 }

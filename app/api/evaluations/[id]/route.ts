@@ -3,6 +3,7 @@ import { resolveRouteParams, type RouteContext } from "@/lib/route-context";
 import { withAuth, hasMinimumRole } from "@/lib/auth-middleware";
 import { ScoringEvaluationService } from "@/lib/services/scoring-evaluation-service";
 import prisma from "@/lib/prisma-client";
+import { EvaluationStatus } from "@prisma/client";
 
 async function handleGET(
   _request: NextRequest,
@@ -19,7 +20,10 @@ async function handleGET(
     );
 
     if (!evaluation) {
-      return NextResponse.json({ error: "Evaluation not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Evaluation not found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ data: evaluation }, { status: 200 });
@@ -42,13 +46,30 @@ async function handlePUT(
     }
 
     const body = await request.json();
+    const requestedStatus = body.status as string | undefined;
+    const status =
+      requestedStatus &&
+      Object.values(EvaluationStatus).includes(
+        requestedStatus as EvaluationStatus
+      )
+        ? (requestedStatus as EvaluationStatus)
+        : undefined;
+
     const updated = await prisma.scoringEvaluation.update({
       where: { id: params.id },
       data: {
-        status: body.status,
-        rating: body.rating,
-        recommendation: body.recommendation,
-        notes: body.notes,
+        ...(status ? { status } : {}),
+        ...(typeof body.recommendation === "string"
+          ? { recommendation: body.recommendation }
+          : {}),
+        ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      },
+      include: {
+        project: true,
+        client: true,
+        model: true,
+        version: true,
+        analyst: true,
       },
     });
 
@@ -70,8 +91,12 @@ async function handleDELETE(
     if (!hasMinimumRole(user.role, "analyst")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+
     await prisma.scoringEvaluation.delete({ where: { id: params.id } });
-    return NextResponse.json({ message: "Evaluation deleted" }, { status: 200 });
+    return NextResponse.json(
+      { message: "Evaluation deleted" },
+      { status: 200 }
+    );
   } catch (error: unknown) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
@@ -81,16 +106,22 @@ async function handleDELETE(
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const params = await resolveRouteParams(context as RouteContext<{ id: string }>);
+  const params = await resolveRouteParams(
+    context as RouteContext<{ id: string }>
+  );
   return withAuth(request, (req, user) => handleGET(req, user, params));
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const params = await resolveRouteParams(context as RouteContext<{ id: string }>);
+  const params = await resolveRouteParams(
+    context as RouteContext<{ id: string }>
+  );
   return withAuth(request, (req, user) => handlePUT(req, user, params));
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const params = await resolveRouteParams(context as RouteContext<{ id: string }>);
+  const params = await resolveRouteParams(
+    context as RouteContext<{ id: string }>
+  );
   return withAuth(request, (req, user) => handleDELETE(req, user, params));
 }

@@ -61,20 +61,24 @@ export default function EvaluationsPage() {
   const fetchEvaluations = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/evaluations?limit=100");
+      const res = await fetch(
+        "/api/evaluations?limit=100&includeArchived=true"
+      );
       if (!res.ok) throw new Error("Erreur lors du chargement des évaluations");
       const data = await res.json();
       const rows: EvaluationRow[] = (data.data || []).map((ev: any) => ({
         id: ev.id,
         projectId: ev.projectId,
         projectName: ev.project?.nom || "Projet inconnu",
-        analyst: ev.analyst ? `${ev.analyst.prenom || ""} ${ev.analyst.nom || ""}`.trim() : "N/A",
+        analyst: ev.analyst
+          ? `${ev.analyst.prenom || ""} ${ev.analyst.nom || ""}`.trim()
+          : "N/A",
         status: ev.status || "brouillon",
         finalScore: ev.finalScore,
         rating: ev.rating,
         createdAt: ev.createdAt,
         updatedAt: ev.updatedAt,
-        isArchived: ev.isArchived,
+        isArchived: ev.status === "archive",
       }));
       setEvaluations(rows);
       setError(null);
@@ -111,13 +115,19 @@ export default function EvaluationsPage() {
       const res = await fetch(`/api/evaluations/${evaluationId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...ev, isArchived: archive }),
+        body: JSON.stringify({ status: archive ? "archive" : "brouillon" }),
       });
       if (!res.ok) throw new Error("Erreur lors de l'archivage");
 
       setEvaluations(
         evaluations.map((e) =>
-          e.id === evaluationId ? { ...e, isArchived: archive } : e
+          e.id === evaluationId
+            ? {
+                ...e,
+                status: archive ? "archive" : "brouillon",
+                isArchived: archive,
+              }
+            : e
         )
       );
     } catch (err: any) {
@@ -136,7 +146,8 @@ export default function EvaluationsPage() {
   };
 
   const getStatusLabel = (status: string) => STATUS_LABELS[status] || status;
-  const getStatusColor = (status: string) => STATUS_COLORS[status] || "bg-slate-600 text-slate-300";
+  const getStatusColor = (status: string) =>
+    STATUS_COLORS[status] || "bg-slate-600 text-slate-300";
 
   const formatDate = (dateStr: string) => {
     try {
@@ -167,7 +178,9 @@ export default function EvaluationsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white">Évaluations</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-white">
+            Évaluations
+          </h1>
           <p className="text-slate-400 mt-2 text-sm md:text-base">
             Gérez les évaluations de risque des projets
           </p>
@@ -198,7 +211,10 @@ export default function EvaluationsPage() {
       <div className="space-y-4">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 text-slate-500" size={20} />
+            <Search
+              className="absolute left-3 top-3 text-slate-500"
+              size={20}
+            />
             <input
               type="text"
               placeholder="Rechercher par projet..."
@@ -220,6 +236,7 @@ export default function EvaluationsPage() {
             <option value="soumis">Soumis</option>
             <option value="valide">Validé</option>
             <option value="rejete">Rejeté</option>
+            <option value="archive">Archivé</option>
           </select>
 
           <select
@@ -252,7 +269,8 @@ export default function EvaluationsPage() {
         </div>
 
         <p className="text-sm text-slate-400">
-          {filtered.length} évaluation{filtered.length !== 1 ? "s" : ""} trouvée{filtered.length !== 1 ? "s" : ""}
+          {filtered.length} évaluation{filtered.length !== 1 ? "s" : ""} trouvée
+          {filtered.length !== 1 ? "s" : ""}
         </p>
       </div>
 
@@ -262,39 +280,65 @@ export default function EvaluationsPage() {
           <table className="w-full">
             <thead className="bg-slate-900 border-b border-slate-700">
               <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">Projet</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">Score</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">Rating</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">Statut</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">Date</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">Actions</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
+                  Projet
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
+                  Score
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
+                  Rating
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
+                  Statut
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
+                  Date
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td
+                    colSpan={6}
+                    className="px-6 py-8 text-center text-slate-400"
+                  >
                     Aucune évaluation trouvée
                   </td>
                 </tr>
               ) : (
                 filtered.map((ev) => (
-                  <tr key={ev.id} className="hover:bg-slate-700/50 transition-colors">
-                    <td className="px-6 py-3 font-semibold text-white">{ev.projectName}</td>
+                  <tr
+                    key={ev.id}
+                    className="hover:bg-slate-700/50 transition-colors"
+                  >
+                    <td className="px-6 py-3 font-semibold text-white">
+                      {ev.projectName}
+                    </td>
                     <td className="px-6 py-3 font-bold text-cyan-400">
                       {ev.finalScore != null ? ev.finalScore.toFixed(2) : "—"}
                     </td>
                     <td className="px-6 py-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getRatingColor(ev.rating)}`}>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${getRatingColor(ev.rating)}`}
+                      >
                         {ev.rating || "—"}
                       </span>
                     </td>
                     <td className="px-6 py-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(ev.status)}`}>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(ev.status)}`}
+                      >
                         {getStatusLabel(ev.status)}
                       </span>
                     </td>
-                    <td className="px-6 py-3 text-slate-400 text-sm">{formatDate(ev.createdAt)}</td>
+                    <td className="px-6 py-3 text-slate-400 text-sm">
+                      {formatDate(ev.createdAt)}
+                    </td>
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-2">
                         <Link
@@ -349,7 +393,9 @@ export default function EvaluationsPage() {
         <StatCard label="Total" value={evaluations.length.toString()} />
         <StatCard
           label="Validées"
-          value={evaluations.filter((e) => e.status === "valide").length.toString()}
+          value={evaluations
+            .filter((e) => e.status === "valide")
+            .length.toString()}
         />
         <StatCard
           label="Score moyen"
