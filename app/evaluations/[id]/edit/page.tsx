@@ -260,6 +260,33 @@ export default function EditEvaluationPage({
     }
   };
 
+  const handleDelete = async () => {
+    if (!evalId) return;
+
+    try {
+      setDeleting(true);
+      setError(null);
+
+      const response = await fetch(`/api/evaluations/${evalId}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Erreur lors de la suppression");
+      }
+
+      router.push("/evaluations");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Erreur lors de la suppression"
+      );
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
