@@ -4,7 +4,12 @@
  */
 
 import { UserRole } from "@prisma/client";
-import { hasPermission as hasBankingPermission, normalizeRole, ROLE_PERMISSIONS, type Permission } from "@/lib/rbac";
+import {
+  hasPermission as hasBankingPermission,
+  normalizeRole,
+  ROLE_PERMISSIONS,
+  type Permission,
+} from "@/lib/rbac";
 
 export type EntityType =
   | "client"
@@ -29,13 +34,17 @@ export type ActionType =
   | "publish"
   | "configure";
 
-const ACTION_PERMISSION_MAP: Partial<Record<EntityType, Partial<Record<ActionType, Permission>>>> = {
+const ACTION_PERMISSION_MAP: Partial<
+  Record<EntityType, Partial<Record<ActionType, Permission>>>
+> = {
   project: {
     create: "PROJECT_CREATE",
     update: "PROJECT_UPDATE",
   },
   evaluation: {
     create: "EVALUATION_CREATE",
+    update: "EVALUATION_UPDATE",
+    delete: "EVALUATION_DELETE",
     submit: "EVALUATION_SUBMIT",
     approve: "EVALUATION_VALIDATE",
     validate: "EVALUATION_VALIDATE",
@@ -69,7 +78,12 @@ export const hasPermission = (
   action: ActionType
 ): boolean => {
   if (action === "read" && !["user", "audit", "diagnostic"].includes(entity)) {
-    return normalizeRole(role) !== "VIEWER" || entity === "client" || entity === "project" || entity === "evaluation";
+    return (
+      normalizeRole(role) !== "VIEWER" ||
+      entity === "client" ||
+      entity === "project" ||
+      entity === "evaluation"
+    );
   }
 
   const permission = ACTION_PERMISSION_MAP[entity]?.[action];
