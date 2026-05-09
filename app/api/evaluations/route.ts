@@ -22,17 +22,22 @@ async function handleGET(
     const limit = parseInt(searchParams.get("limit") || "50", 10);
     const status = searchParams.get("status");
     const projectId = searchParams.get("projectId");
+    const includeArchived = searchParams.get("includeArchived") === "true";
 
     const validated = paginationSchema.parse({ page, limit });
     const skip = (validated.page - 1) * validated.limit;
 
     const parsedStatus =
-      status && Object.values(EvaluationStatus).includes(status as EvaluationStatus)
+      status &&
+      Object.values(EvaluationStatus).includes(status as EvaluationStatus)
         ? (status as EvaluationStatus)
         : undefined;
 
     const where = {
       ...(parsedStatus ? { status: parsedStatus } : {}),
+      ...(!parsedStatus && !includeArchived
+        ? { status: { not: EvaluationStatus.archive } }
+        : {}),
       ...(projectId ? { projectId } : {}),
     };
 
@@ -41,6 +46,16 @@ async function handleGET(
         where,
         skip,
         take: validated.limit,
+        include: {
+          project: { select: { id: true, nom: true } },
+          client: { select: { id: true, nom: true } },
+          analyst: {
+            select: { id: true, nom: true, prenom: true, email: true },
+          },
+          model: { select: { id: true, code: true, label: true } },
+          version: { select: { id: true, label: true, versionNumber: true } },
+          _count: { select: { answers: true, nodeResults: true } },
+        },
         orderBy: { createdAt: "desc" },
       }),
       prisma.scoringEvaluation.count({ where }),
@@ -59,7 +74,10 @@ async function handleGET(
       { status: 200 }
     );
   } catch (error: unknown) {
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
+    return NextResponse.json(
+      { error: getErrorMessage(error) },
+      { status: 400 }
+    );
   }
 }
 
@@ -92,9 +110,15 @@ async function handlePOST(
       evaluatedBy: user.userId || "",
     });
 
-    return NextResponse.json({ success: true, data: evaluation }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: evaluation },
+      { status: 201 }
+    );
   } catch (error: unknown) {
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
+    return NextResponse.json(
+      { error: getErrorMessage(error) },
+      { status: 400 }
+    );
   }
 }
 
