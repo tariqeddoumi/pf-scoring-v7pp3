@@ -10,6 +10,8 @@ interface QuestionnaireFormProps {
   initialAnswers?: Record<string, any>;
 }
 
+const EMPTY_INITIAL_ANSWERS: Record<string, any> = {};
+
 interface AnswerState {
   [nodeId: string]: {
     valueString?: string;
@@ -30,11 +32,15 @@ const DEFAULT_QUALITATIVE_OPTIONS = [
 export function QuestionnaireForm({
   nodes,
   onAnswersChange,
-  initialAnswers = {},
+  initialAnswers = EMPTY_INITIAL_ANSWERS,
 }: QuestionnaireFormProps) {
   const [answers, setAnswers] = useState<AnswerState>(initialAnswers);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [selectedRootId, setSelectedRootId] = useState<string>("");
+
+  useEffect(() => {
+    setAnswers(initialAnswers);
+  }, [initialAnswers]);
 
   useEffect(() => {
     onAnswersChange(answers);
@@ -70,10 +76,7 @@ export function QuestionnaireForm({
 
   const updateAnswer = (
     nodeId: string,
-    key: keyof Omit<
-      AnswerState[string],
-      "comment"
-    >,
+    key: keyof Omit<AnswerState[string], "comment">,
     value: any
   ) => {
     setAnswers((prev) => ({
@@ -130,7 +133,10 @@ export function QuestionnaireForm({
     return "bg-slate-800/30";
   };
 
-  const renderNode = (node: QuestionnaireNode, depth: number = 0): ReactElement => {
+  const renderNode = (
+    node: QuestionnaireNode,
+    depth: number = 0
+  ): ReactElement => {
     const isParent = node.children && node.children.length > 0;
     const isExpanded = expandedNodes.has(node.id);
     const nodeAnswer = answers[node.id];
@@ -157,7 +163,9 @@ export function QuestionnaireForm({
             <div className="flex-1">
               <h3 className="text-white font-medium">{node.label}</h3>
               {node.description && (
-                <p className="text-xs text-slate-400 mt-1">{node.description}</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {node.description}
+                </p>
               )}
             </div>
           </div>
@@ -198,13 +206,20 @@ export function QuestionnaireForm({
                     type="number"
                     value={nodeAnswer?.valueNumber || ""}
                     onChange={(e) =>
-                      updateAnswer(node.id, "valueNumber", e.target.value ? parseFloat(e.target.value) : undefined)
+                      updateAnswer(
+                        node.id,
+                        "valueNumber",
+                        e.target.value ? parseFloat(e.target.value) : undefined
+                      )
                     }
                     placeholder="Ex: 7.5"
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">
-                    Plages: {node.ranges.map((r) => `${r.minValue}-${r.maxValue}=${r.score}pts`).join(", ")}
+                    Plages:{" "}
+                    {node.ranges
+                      .map((r) => `${r.minValue}-${r.maxValue}=${r.score}pts`)
+                      .join(", ")}
                   </p>
                 </div>
               )}
@@ -330,9 +345,14 @@ export function QuestionnaireForm({
 
   const selectedRootNode =
     nodes.find((node) => node.id === selectedRootId) || nodes[0];
-  const selectedRootIndex = nodes.findIndex((node) => node.id === selectedRootNode?.id);
-  const selectedRootLeafNodes = selectedRootNode ? collectLeafNodes(selectedRootNode) : [];
-  const selectedAnsweredCount = selectedRootLeafNodes.filter(isLeafAnswered).length;
+  const selectedRootIndex = nodes.findIndex(
+    (node) => node.id === selectedRootNode?.id
+  );
+  const selectedRootLeafNodes = selectedRootNode
+    ? collectLeafNodes(selectedRootNode)
+    : [];
+  const selectedAnsweredCount =
+    selectedRootLeafNodes.filter(isLeafAnswered).length;
   const selectedTotalCount = selectedRootLeafNodes.length;
   const selectedProgress =
     selectedTotalCount > 0
@@ -346,7 +366,7 @@ export function QuestionnaireForm({
           Domaines d&apos;évaluation
         </h3>
         <div className="space-y-2">
-          {nodes.map((node) => (
+          {nodes.map((node) =>
             (() => {
               const nodeLeaves = collectLeafNodes(node);
               const answered = nodeLeaves.filter(isLeafAnswered).length;
@@ -378,7 +398,7 @@ export function QuestionnaireForm({
                 </button>
               );
             })()
-          ))}
+          )}
         </div>
       </aside>
 
@@ -390,7 +410,8 @@ export function QuestionnaireForm({
                 Progression — {selectedRootNode.label}
               </span>
               <span className="text-slate-400">
-                {selectedAnsweredCount}/{selectedTotalCount} ({selectedProgress}%)
+                {selectedAnsweredCount}/{selectedTotalCount} ({selectedProgress}
+                %)
               </span>
             </div>
             <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
@@ -409,7 +430,10 @@ export function QuestionnaireForm({
             <button
               type="button"
               onClick={() =>
-                setSelectedRootId(nodes[Math.max(0, selectedRootIndex - 1)]?.id || selectedRootId)
+                setSelectedRootId(
+                  nodes[Math.max(0, selectedRootIndex - 1)]?.id ||
+                    selectedRootId
+                )
               }
               disabled={selectedRootIndex <= 0}
               className="px-4 py-2 rounded-md bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
@@ -421,7 +445,8 @@ export function QuestionnaireForm({
               type="button"
               onClick={() =>
                 setSelectedRootId(
-                  nodes[Math.min(nodes.length - 1, selectedRootIndex + 1)]?.id || selectedRootId
+                  nodes[Math.min(nodes.length - 1, selectedRootIndex + 1)]
+                    ?.id || selectedRootId
                 )
               }
               disabled={selectedRootIndex >= nodes.length - 1}

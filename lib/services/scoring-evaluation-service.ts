@@ -3,6 +3,8 @@ import { auditSensitiveAction } from "@/lib/services/audit-trail-service";
 import { RuntimeAnswerPayload } from "@/lib/scoring-runtime-contract";
 import { ScoringRuntimeService } from "@/lib/services/scoring-runtime-service";
 
+const ANSWER_EDITABLE_STATUSES = new Set(["brouillon", "retour_correction"]);
+
 export class ScoringEvaluationService {
   /**
    * Create a new evaluation for a project
@@ -69,8 +71,10 @@ export class ScoringEvaluationService {
       throw new Error("Evaluation not found");
     }
 
-    if (evaluation.status !== "brouillon") {
-      throw new Error("Can only record answers on draft evaluations");
+    if (!ANSWER_EDITABLE_STATUSES.has(evaluation.status)) {
+      throw new Error(
+        "Can only record answers on draft or returned-for-correction evaluations"
+      );
     }
 
     const node = await prisma.scoringNode.findUnique({
@@ -241,7 +245,9 @@ export class ScoringEvaluationService {
     }
 
     if (!["soumis", "en_revue", "valide"].includes(evaluation.status)) {
-      throw new Error("Can only reject submitted, in-review or validated evaluations");
+      throw new Error(
+        "Can only reject submitted, in-review or validated evaluations"
+      );
     }
 
     const updated = await prisma.scoringEvaluation.update({
@@ -278,15 +284,19 @@ export class ScoringEvaluationService {
       throw new Error("Evaluation not found");
     }
 
-    const model = await ScoringRuntimeService.getRuntimeModel(evaluation.modelVersionId);
-    const runtimeAnswers: RuntimeAnswerPayload[] = evaluation.answers.map((answer) => ({
-      nodeId: answer.nodeId,
-      valueString: answer.valueString,
-      valueNumber: answer.valueNumber,
-      valueBoolean: answer.valueBoolean,
-      valueDate: answer.valueDate?.toISOString() ?? null,
-      manualScore: answer.manualScore,
-    }));
+    const model = await ScoringRuntimeService.getRuntimeModel(
+      evaluation.modelVersionId
+    );
+    const runtimeAnswers: RuntimeAnswerPayload[] = evaluation.answers.map(
+      (answer) => ({
+        nodeId: answer.nodeId,
+        valueString: answer.valueString,
+        valueNumber: answer.valueNumber,
+        valueBoolean: answer.valueBoolean,
+        valueDate: answer.valueDate?.toISOString() ?? null,
+        manualScore: answer.manualScore,
+      })
+    );
 
     const result = ScoringRuntimeService.evaluateAnswers(model, runtimeAnswers);
     const nodeResults = new Map(
@@ -305,33 +315,37 @@ export class ScoringEvaluationService {
       ])
     );
 
-    await prisma.$transaction(async (tx) => {
-      await tx.scoringEvaluationNodeResult.deleteMany({
+    const scoreWriteOperations = [
+      prisma.scoringEvaluationNodeResult.deleteMany({
         where: { evaluationId },
-      });
-
-      for (const nodeScore of result.nodeScores) {
-        await tx.scoringEvaluationNodeResult.create({
-          data: {
-            evaluationId,
-            nodeId: nodeScore.nodeId,
-            rawScore: nodeScore.rawScore,
-            weightedScore: nodeScore.weightedScore,
-            normalizedScore: nodeScore.rawScore,
-            aggregationMethod: nodeScore.aggregationMethod,
-            traceJson: JSON.stringify(nodeScore),
-          },
-        });
-      }
-
-      await tx.scoringEvaluation.update({
+      }),
+      ...(result.nodeScores.length > 0
+        ? [
+            prisma.scoringEvaluationNodeResult.createMany({
+              data: result.nodeScores.map((nodeScore) => ({
+                evaluationId,
+                nodeId: nodeScore.nodeId,
+                rawScore: nodeScore.rawScore,
+                weightedScore: nodeScore.weightedScore,
+                normalizedScore: nodeScore.rawScore,
+                aggregationMethod: nodeScore.aggregationMethod,
+                traceJson: JSON.stringify(nodeScore),
+              })),
+            }),
+          ]
+        : []),
+      prisma.scoringEvaluation.update({
         where: { id: evaluationId },
         data: {
           finalScore: result.globalScore,
           rating: this.ratingFromScore(result.globalScore),
           recommendation: result.decision.status,
-          probabilityOfDefault: this.probabilityOfDefaultFromScore(result.globalScore),
-          malusTotal: result.triggeredRules.filter((rule) => rule.actionType === "APPLY_MALUS").length,
+          probabilityOfDefault: this.probabilityOfDefaultFromScore(
+            result.globalScore
+          ),
+          malusTotal: result.triggeredRules.filter(
+            (rule) => rule.actionType === "APPLY_MALUS"
+          ).length,
           triggeredRulesJson: JSON.stringify(result.triggeredRules),
           summaryJson: JSON.stringify({
             alerts: result.alerts,
@@ -340,8 +354,10 @@ export class ScoringEvaluationService {
             nodeScores: result.nodeScores,
           }),
         },
-      });
-    });
+      }),
+    ];
+
+    await prisma.$transaction(scoreWriteOperations);
 
     return {
       nodeResults,
